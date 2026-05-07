@@ -93,3 +93,19 @@ Living doc — Claude Code appends here whenever it makes a call that wasn't exp
 
 ### A20 — `git init` is local-only
 **Decision:** Claude runs `git init` and creates per-module commits locally. Pushing to GitHub (`AIfenceguy/atelier-tsui`) requires Ricky's gh auth + remote creation; README walks through it.
+
+### A21 — Phase 1 smoke test was static, not interactive
+**Decision:** The Phase 1 build was verified by:
+  1. `node --check` on every `.js` file (23/23 parse cleanly).
+  2. Custom static-import resolver that confirms every `import { X } from './Y.js'` matches an actual export. All resolve.
+  3. HTTP 200 probe on every shell asset and module file via `curl` against `python -m http.server`.
+The headless preview tool's screenshot timed out, almost certainly because the page tries to fetch `https://esm.sh/@supabase/supabase-js@2.45.4` and Google Fonts at load time and the preview's renderer doesn't reach external CDNs reliably. **Real-browser interactive verification is not in this build's history** — first true human run will be Ricky against a live Supabase project.
+**Why simpler:** The alternative (vendor Supabase + Google Fonts locally) is a Phase-2 PWA/offline-completeness improvement, not a Phase-1 blocker.
+**If it bites us:** A typo I didn't catch surfaces as a runtime error on Ricky's first sign-in. Mitigate by checking the browser console immediately after first load; the static checks above should have caught structural issues but not all logic bugs.
+
+### A22 — Bottom-nav `Lessons` route param
+**Decision:** Switching between Private and Group sub-tabs persists to `localStorage('atelier.lessonsTab')` and survives navigation. URL param `?tab=group` overrides if present.
+
+### A23 — `tactic_taxonomy` 'add new' from bouts entry
+**Decision:** When a user adds a new failure-pattern chip from the bout entry form, it's inserted into `tactic_taxonomy` with `kind='failure'`. New scoring tactics aren't currently addable from the bout entry tally widget (the `tacticTally` widget doesn't have an 'add' affordance). Adding new scoring tactics requires future Settings UI or direct DB seed.
+**If it bites us:** Either kid wants a custom scoring tactic mid-session and can't add it. Workaround: type it into the reflection field for now; Phase 2 adds an 'add new tactic' button.
