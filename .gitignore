@@ -1,4 +1,4 @@
-js/lib/config.js
+
 .DS_Store
 .idea/
 .vscode/
@@ -6,3 +6,4 @@ js/lib/config.js
 node_modules/
 .env
 .env.local
+.supabase-creds.txt
