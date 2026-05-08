@@ -9,10 +9,6 @@ import { getPhysicalForDate, listPhysicalRecent, nextTournament, loadTaxonomies 
 import { safeWrite } from '../lib/offline.js';
 import { scaleSlider } from '../lib/chips.js';
 
-// ============================================================
-// Daily plan templates (per the brief §3.4)
-// dayOfWeek: 0=Sun, 1=Mon, ... 6=Sat
-// ============================================================
 const RAEDYN_PLAN = {
     daily: [
         { drill_slug: 'jump-squats', label: 'Jump squats', target_reps: 100, note: '4 × 25, 60s rest' }
@@ -62,25 +58,15 @@ const KAYLAN_PLAN = {
             { drill_slug: 'animal-movements', label: 'Animal movements', target_reps: 1 },
             { drill_slug: 'footwork-ladder', label: 'Footwork ladder', target_reps: 1 }
         ],
-        2: [
-            { drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }
-        ],
+        2: [{ drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }],
         3: [
             { drill_slug: 'plank-circuit', label: 'Plank circuit', target_reps: 1 },
             { drill_slug: 'footwork-ladder', label: 'Footwork ladder', target_reps: 1 }
         ],
-        4: [
-            { drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }
-        ],
-        5: [
-            { drill_slug: 'animal-movements', label: 'Animal movements', target_reps: 1 }
-        ],
-        6: [
-            { drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }
-        ],
-        0: [
-            { drill_slug: 'full-rest', label: 'Full rest day', target_reps: 1 }
-        ]
+        4: [{ drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }],
+        5: [{ drill_slug: 'animal-movements', label: 'Animal movements', target_reps: 1 }],
+        6: [{ drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }],
+        0: [{ drill_slug: 'full-rest', label: 'Full rest day', target_reps: 1 }]
     }
 };
 
@@ -91,7 +77,6 @@ function planForToday(role, isoDate) {
     return [...tpl.daily, ...((tpl.byDow[dow]) || [])];
 }
 
-// Reduce volume by ~50% (advisory only) when within taper window
 function applyTaper(plan, daysToTournament) {
     if (daysToTournament == null || daysToTournament < 0 || daysToTournament > 5) return plan;
     return plan.map((d) => {
@@ -101,18 +86,13 @@ function applyTaper(plan, daysToTournament) {
     });
 }
 
-// ============================================================
-// Mount
-// ============================================================
 export async function mountPhysical(root) {
     const profile = activeProfile();
-    if (!profile) return root.appendChild(el('div', { class: 'empty' }, ['Pick a profile.']));
+    if (!profile) return root.appendChild(el('div', { class: 'empty' }, [el('p', { class: 'empty-line' }, ['Pick a profile.'])]));
 
     const date = todayISO();
     const [existing, recent, nextT] = await Promise.all([
-        getPhysicalForDate(date),
-        listPhysicalRecent(14),
-        nextTournament()
+        getPhysicalForDate(date), listPhysicalRecent(14), nextTournament()
     ]);
 
     const daysToT = nextT ? daysUntil(nextT.start_date) : null;
@@ -121,127 +101,123 @@ export async function mountPhysical(root) {
     let plan = planForToday(profile.role, date);
     plan = applyTaper(plan, daysToT);
 
-    // merge existing actuals into plan
     const completed = new Map((existing?.drills_completed || []).map((d) => [d.drill_slug, d]));
     for (const d of plan) {
         const c = completed.get(d.drill_slug);
         if (c) { d.actual_reps = c.actual_reps; d.done = !!c.done || (c.actual_reps >= d.target_reps); }
-        else   { d.actual_reps = 0; d.done = false; }
+        else { d.actual_reps = 0; d.done = false; }
     }
-    // include drills they did that aren't in today's plan (manual additions)
     for (const c of (existing?.drills_completed || [])) {
         if (!plan.find((d) => d.drill_slug === c.drill_slug)) {
             plan.push({ ...c, label: c.label || c.drill_slug, target_reps: c.target_reps || 0, _adhoc: true });
         }
     }
 
-    root.appendChild(el('div', { class: 'section-head' }, [
-        el('h2', {}, ['Physical']),
-        el('span', { class: 'meta' }, [profile.name, ' · ', fmtDate(date)])
+    root.appendChild(el('div', { style: { padding: '40px var(--gut) 8px' } }, [
+        el('h1', { class: 'page-eyebrow' }, ['Physical']),
+        el('div', { class: 'today-sub' }, [
+            el('span', {}, [profile.name.toUpperCase()]),
+            el('span', {}, [fmtDate(date).toUpperCase()])
+        ])
     ]));
 
     if (inTaper) {
-        root.appendChild(el('div', { class: 'nudge' }, [
-            el('div', { class: 'nudge-head' }, [`Taper window — ${daysToT === 0 ? 'today' : daysToT + ' days'} to ${nextT.name}`]),
-            'Plyometric volume reduced ~50% as a guideline. Skip anything that feels heavy in the legs.',
-            el('div', { class: 'nudge-fine' }, ['Advisory only. Talk to your coach if you\'re unsure what to scale.'])
+        root.appendChild(el('div', { class: 'card', style: { margin: '0 var(--gut) 16px', borderColor: 'var(--gold-soft)' } }, [
+            el('div', { class: 'label', style: { color: 'var(--gold-cream)' } }, [`Taper · ${daysToT === 0 ? 'today' : daysToT + ' days'} to ${nextT.name}`]),
+            el('p', { class: 'auth-tagline', style: { fontSize: '14px', margin: '8px 0 0', maxWidth: 'none' } }, ['Plyometric volume reduced ~50% as a guideline. Skip anything that feels heavy in the legs.'])
         ]));
     }
 
-    // knee-pain advisory
     const kneeHits = recent.filter((s) => s.injury_flag && /knee/i.test(s.soreness_location || '')).length;
     if (kneeHits >= 3) {
-        root.appendChild(el('div', { class: 'nudge' }, [
-            el('div', { class: 'nudge-head' }, [`Knee soreness flagged ${kneeHits}× in last 14 days`]),
-            'When jump training overlaps with growth-plate development (Osgood–Schlatter age range), rising knee pain is worth a check-in.',
-            el('div', { class: 'nudge-fine' }, ['Advisory only. Talk to your doctor or coach.'])
+        root.appendChild(el('div', { class: 'card', style: { margin: '0 var(--gut) 16px', borderColor: 'rgba(192,138,126,0.3)' } }, [
+            el('div', { class: 'label', style: { color: 'var(--loss)' } }, [`Knee soreness flagged ${kneeHits}× in last 14 days`]),
+            el('p', { class: 'auth-tagline', style: { fontSize: '14px', margin: '8px 0 0', maxWidth: 'none' } }, ['When jump training overlaps with growth-plate development, rising knee pain is worth a check-in. Advisory only — talk to your coach.'])
         ]));
     }
 
-    // drill checklist card
-    const card = el('div', { class: 'card' });
-    root.appendChild(card);
-    card.appendChild(el('h4', {}, [`Today's drills · ${dayName(new Date(date + 'T00:00:00').getDay())}`]));
+    root.appendChild(el('div', { class: 'label-row' }, [
+        el('span', { class: 'label' }, [`Today's drills · ${dayName(new Date(date + 'T00:00:00').getDay())}`])
+    ]));
 
     for (const d of plan) {
         const repsInput = el('input', {
-            type: 'number', class: 'reps', min: 0, value: d.actual_reps || 0,
+            type: 'number', min: 0, value: d.actual_reps || 0,
             'aria-label': `actual reps for ${d.label}`,
+            class: 'field-input field-numeric',
+            style: { textAlign: 'right', maxWidth: '60px' },
             onchange: (e) => { d.actual_reps = Number(e.target.value) || 0; d.done = d.actual_reps >= d.target_reps; rerow(); }
         });
-        const row = el('div', { class: 'drill-row' + (d.done ? ' done' : '') }, [
+        const row = el('div', { class: 'drill' + (d.done ? ' is-done' : '') }, [
             el('button', {
-                type: 'button', class: 'check',
+                type: 'button', class: 'drill-check',
                 onclick: () => { d.done = !d.done; if (d.done && (!d.actual_reps || d.actual_reps < d.target_reps)) { d.actual_reps = d.target_reps; repsInput.value = d.target_reps; } rerow(); }
-            }, [d.done ? '✓' : '']),
-            el('div', {}, [
-                el('div', {}, [d.label, d._tapered ? el('span', { class: 'kicker', style: { marginLeft: '6px', color: 'var(--warn)' } }, ['tapered']) : null, d._adhoc ? el('span', { class: 'kicker', style: { marginLeft: '6px' } }, ['ad-hoc']) : null]),
-                d.note ? el('div', { class: 'kicker' }, [d.note]) : null
+            }, [
+                el('svg', { width: '12', height: '12', viewBox: '0 0 12 12', fill: 'none' }, [
+                    el('path', { d: 'M2 6 L5 9 L10 3', stroke: '#15140f', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+                ])
+            ]),
+            el('div', { class: 'drill-body' }, [
+                el('div', { class: 'drill-name' }, [
+                    d.label,
+                    d._tapered ? el('span', { class: 'label', style: { marginLeft: '8px', color: 'var(--gold-cream)' } }, ['TAPERED']) : null,
+                    d._adhoc ? el('span', { class: 'label', style: { marginLeft: '8px' } }, ['AD-HOC']) : null
+                ]),
+                d.note ? el('div', { class: 'drill-meta' }, [d.note]) : null
             ]),
             repsInput
         ]);
-        card.appendChild(row);
-        function rerow() {
-            row.classList.toggle('done', !!d.done);
-            row.querySelector('.check').textContent = d.done ? '✓' : '';
-        }
+        root.appendChild(row);
+        function rerow() { row.classList.toggle('is-done', !!d.done); }
     }
 
-    // body data
     const energy = scaleSlider({ value: existing?.energy_1_10 ?? 7 });
     const sore = scaleSlider({ value: existing?.soreness_severity ?? 0, min: 0 });
-    const sleep = el('input', { type: 'number', step: '0.5', min: 0, max: 14, value: existing?.sleep_hours ?? '', placeholder: 'hours' });
-    const soreLoc = el('input', { type: 'text', value: existing?.soreness_location || '', placeholder: 'where (optional)' });
+    const sleep = el('input', { type: 'number', class: 'field-input field-numeric', step: '0.5', min: 0, max: 14, value: existing?.sleep_hours ?? '', placeholder: 'hours' });
+    const soreLoc = el('input', { type: 'text', class: 'field-input', value: existing?.soreness_location || '', placeholder: 'where (optional)' });
     const injuryFlag = el('input', { type: 'checkbox', checked: !!existing?.injury_flag });
-    const injuryNotes = el('textarea', { placeholder: 'what\'s going on (optional)' }, [existing?.injury_notes || '']);
+    const injuryNotes = el('textarea', { class: 'field-textarea', rows: 3, placeholder: "what's going on (optional)" }, [existing?.injury_notes || '']);
 
-    const meta = el('div', { class: 'card' }, [
-        el('h4', {}, ['Today\'s body']),
-        el('div', { class: 'field' }, [el('label', {}, ['Energy 1–10']), energy]),
-        el('div', { class: 'row' }, [
-            el('div', { class: 'field' }, [el('label', {}, ['Soreness 0–10']), sore]),
-            el('div', { class: 'field' }, [el('label', {}, ['Soreness — where']), soreLoc])
-        ]),
-        el('div', { class: 'field' }, [el('label', {}, ['Sleep last night (hrs)']), sleep]),
+    root.appendChild(el('div', { class: 'label-row', style: { marginTop: '32px' } }, [
+        el('span', { class: 'label' }, ["Today's body"])
+    ]));
+    root.appendChild(el('div', { style: { padding: '0 var(--gut)' } }, [
+        el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Energy 1–10']), energy]),
+        el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Soreness 0–10']), sore]),
+        el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Soreness — where']), soreLoc]),
+        el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Sleep last night (hrs)']), sleep]),
         el('div', { class: 'field' }, [
-            el('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', textTransform: 'none', letterSpacing: 'normal', fontFamily: 'var(--serif)', fontSize: '1rem', color: 'var(--cream)' } }, [
-                injuryFlag, ' Flag this as an injury day'
+            el('label', { style: { display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' } }, [
+                injuryFlag,
+                el('span', { class: 'field-label', style: { letterSpacing: '0.18em' } }, ['Flag as injury day'])
             ])
         ]),
-        el('div', { class: 'field' }, [el('label', {}, ['Injury notes']), injuryNotes])
-    ]);
-    root.appendChild(meta);
-
-    root.appendChild(el('div', { class: 'btn-row right' }, [
-        el('button', { class: 'btn', onclick: save }, ['Save today'])
+        el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Injury notes']), injuryNotes])
     ]));
 
-    // recent summary
+    root.appendChild(el('div', { style: { padding: '20px var(--gut) 16px' } }, [
+        el('button', { class: 'btn btn-primary btn-mono-label btn-block', onclick: save }, ['Save today'])
+    ]));
+
     if (recent.length) {
-        root.appendChild(el('div', { class: 'section-head', style: { marginTop: '24px' } }, [
-            el('h2', {}, ['Last 14 days']),
-            el('span', { class: 'meta' }, [`${recent.length} session${recent.length === 1 ? '' : 's'}`])
+        root.appendChild(el('div', { class: 'label-row', style: { marginTop: '24px' } }, [
+            el('span', { class: 'label' }, ['Last 14 days']),
+            el('span', { class: 'label', style: { color: 'var(--ink-faint)' } }, [`${recent.length} SESSION${recent.length === 1 ? '' : 'S'}`])
         ]));
-        const wrap = el('div', { class: 'chips' });
-        for (const s of recent) {
-            wrap.appendChild(el('span', { class: 'chip' + (s.injury_flag ? ' failure on' : ' on') }, [
+        root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut) 24px' } }, recent.map((s) =>
+            el('span', { class: 'chip ' + (s.injury_flag ? '' : 'is-on'), style: s.injury_flag ? { color: 'var(--loss)', borderColor: 'rgba(192,138,126,0.3)' } : {} }, [
                 fmtDate(s.date), ' · ', `${(s.drills_completed || []).length} drill${(s.drills_completed || []).length === 1 ? '' : 's'}`
-            ]));
-        }
-        root.appendChild(wrap);
+            ])
+        )));
     }
 
     async function save() {
         const drillsCompleted = plan.map((d) => ({
-            drill_slug: d.drill_slug,
-            label: d.label,
-            target_reps: d.target_reps,
-            actual_reps: d.actual_reps || 0,
-            done: !!d.done
+            drill_slug: d.drill_slug, label: d.label, target_reps: d.target_reps,
+            actual_reps: d.actual_reps || 0, done: !!d.done
         }));
         const payload = {
-            profile_id: profile.id,
-            date,
+            profile_id: profile.id, date,
             drills_completed: drillsCompleted,
             energy_1_10: energy.getValue(),
             soreness_location: soreLoc.value.trim() || null,
