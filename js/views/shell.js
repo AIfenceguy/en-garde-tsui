@@ -8,43 +8,78 @@ import { daysUntil, fmtDate } from '../lib/util.js';
 
 export function renderSignIn(root) {
     root.innerHTML = '';
-    const wrap = el('div', { class: 'sign-in' }, [
-        el('h1', {}, ['Atelier Tsui']),
-        el('p', { class: 'kicker' }, ['training journal · foil · 2026']),
-        el('p', {}, ['Sign in to log lessons, bouts, and prep.']),
+    document.body.classList.add('is-signed-out');
+
+    const wrap = el('div', { class: 'auth' }, [
+        el('div', { class: 'auth-mark' }, [
+            el('h1', { class: 'wordmark wordmark-lg' }, ['Atelier Tsui']),
+            el('div', { class: 'auth-mark-sub' }, ['A family studio · foil · est. 2025'])
+        ]),
+        el('p', { class: 'auth-tagline' }, [
+            'A private journal for the work between bouts — yours, theirs, and what was learned.'
+        ]),
         !isConfigured()
-            ? el('div', { class: 'nudge', style: { textAlign: 'left' } }, [
-                el('div', { class: 'nudge-head' }, ['Setup needed']),
-                'Edit ',
-                el('code', {}, ['js/lib/config.js']),
-                ' with your Supabase project URL and anon key. See the README.'
+            ? el('div', { class: 'card', style: { marginTop: '24px' } }, [
+                el('div', { class: 'label' }, ['Setup needed']),
+                el('p', { style: { marginTop: '8px' } }, [
+                    'Edit ',
+                    el('code', {}, ['js/lib/config.js']),
+                    ' with your Supabase project URL and anon key. See the README.'
+                ])
             ])
             : null,
-        el('button', {
-            class: 'btn',
-            disabled: !isConfigured(),
-            onclick: async () => {
-                try { await signInWithGoogle(); }
-                catch (e) { alert('Sign-in failed: ' + e.message); }
-            }
-        }, ['Continue with Google']),
-        el('details', { style: { marginTop: '20px', textAlign: 'left' } }, [
-            el('summary', { class: 'btn-link', style: { cursor: 'pointer' } }, ['Trouble signing in?']),
-            el('div', { class: 'field', style: { marginTop: '12px' } }, [
-                el('label', {}, ['Magic link to email']),
-                el('input', { type: 'email', id: 'magic-email', placeholder: 'you@example.com' })
+        el('div', { class: 'auth-form' }, [
+            el('div', { class: 'label-row' }, [
+                el('span', { class: 'label' }, ['Sign in by email'])
+            ]),
+            el('div', { class: 'field' }, [
+                el('label', { class: 'field-label' }, ['Email']),
+                el('input', {
+                    type: 'email',
+                    id: 'magic-email',
+                    class: 'field-input',
+                    placeholder: 'you@studio',
+                    autocomplete: 'email',
+                    autocapitalize: 'off',
+                    spellcheck: 'false'
+                })
             ]),
             el('button', {
-                class: 'btn btn-ghost',
-                onclick: async () => {
+                class: 'btn btn-primary btn-block btn-mono-label',
+                style: { marginTop: '20px' },
+                onclick: async (e) => {
                     const v = document.getElementById('magic-email').value.trim();
                     if (!v) return;
+                    const btn = e.currentTarget;
+                    const orig = btn.textContent;
+                    btn.disabled = true;
+                    btn.textContent = 'Sending…';
                     try {
                         await signInWithMagicLink(v);
-                        alert('Check your email for the link.');
-                    } catch (e) { alert('Magic link failed: ' + e.message); }
+                        btn.textContent = 'Check your inbox';
+                        const sent = el('p', { class: 'auth-tagline', style: { marginTop: '14px', textAlign: 'center' } }, [
+                            'Check ', el('em', {}, [v]), ' for a link. It opens the studio.'
+                        ]);
+                        btn.parentElement.appendChild(sent);
+                    } catch (err) {
+                        btn.textContent = orig;
+                        btn.disabled = false;
+                        alert('Magic link failed: ' + err.message);
+                    }
                 }
-            }, ['Send magic link'])
+            }, ['Send magic link']),
+            el('div', { class: 'auth-divider' }, ['or']),
+            el('button', {
+                class: 'btn btn-ghost btn-block',
+                disabled: !isConfigured(),
+                onclick: async () => {
+                    try { await signInWithGoogle(); }
+                    catch (e) { alert('Sign-in failed: ' + e.message); }
+                }
+            }, ['Continue with Google']),
+            el('div', { class: 'auth-foot' }, [
+                'Three profiles · one studio · private by default'
+            ])
         ])
     ]);
     root.appendChild(wrap);
@@ -55,10 +90,7 @@ export async function refreshTournamentCountdown() {
     if (!node) return;
     try {
         const t = await nextTournament();
-        if (!t) {
-            node.innerHTML = '';
-            return;
-        }
+        if (!t) { node.innerHTML = ''; return; }
         const d = daysUntil(t.start_date);
         if (d < 0) { node.innerHTML = ''; return; }
         node.innerHTML = '';
