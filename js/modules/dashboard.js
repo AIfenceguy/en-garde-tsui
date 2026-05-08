@@ -1,6 +1,6 @@
 // Dashboard — "Today" landing.
-// Shows: greeting, countdown to next tournament, today's body/mental status,
-// recent bouts, quick actions.
+// Editorial layout per the new design system: italic greeting, caps-mono labels,
+// metric-grid for status, bout-card timeline for recent bouts.
 
 import { el, todayISO, fmtDate, fmtDateLong, daysUntil } from '../lib/util.js';
 import { activeProfile } from '../lib/state.js';
@@ -11,7 +11,12 @@ import {
 
 export async function mountDashboard(root) {
     const profile = activeProfile();
-    if (!profile) return root.appendChild(el('div', { class: 'empty' }, ['Pick a profile to begin.']));
+    if (!profile) {
+        root.appendChild(el('div', { class: 'empty' }, [
+            el('p', { class: 'empty-line' }, ['Pick a profile to begin the day.'])
+        ]));
+        return;
+    }
 
     const date = todayISO();
     const [nextT, phys, ment, recentBouts, opps] = await Promise.all([
@@ -22,108 +27,84 @@ export async function mountDashboard(root) {
         listOpponents()
     ]);
 
-    root.appendChild(el('div', { class: 'section-head' }, [
-        el('h2', {}, [`${greeting()}, ${profile.name}.`]),
-        el('span', { class: 'meta' }, [fmtDateLong(date)])
-    ]));
-
-    // countdown card
+    const heroSubBits = [el('span', {}, [fmtDateLong(date)])];
     if (nextT) {
         const d = daysUntil(nextT.start_date);
-        const inWindow = d >= 0 && d <= 7;
-        const tone = d <= 5 ? 'taper' : '';
-        root.appendChild(el('div', { class: `card ${inWindow ? 'bordered-accent' : ''}` }, [
-            el('div', { class: 'card-head' }, [
-                el('h3', {}, [nextT.name]),
-                el('span', { class: 'card-meta' }, [d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'}`])
-            ]),
-            el('p', { class: 'kicker' }, [
-                fmtDate(nextT.start_date),
-                nextT.end_date && nextT.end_date !== nextT.start_date ? ' – ' + fmtDate(nextT.end_date) : '',
-                nextT.location ? ' · ' + nextT.location : ''
-            ]),
-            (nextT.events || []).length
-                ? el('div', { class: 'chips', style: { marginTop: '8px' } }, nextT.events.map((e) => el('span', { class: 'chip on' }, [e])))
-                : null
-        ]));
-    } else {
-        root.appendChild(el('div', { class: 'card' }, [
-            el('p', { class: 'muted italic' }, ['No upcoming tournament on file.']),
-            el('a', { href: '#tournaments', class: 'btn-link' }, ['Add tournament →'])
+        const tName = nextT.name.length > 22 ? nextT.name.slice(0, 20) + '…' : nextT.name;
+        heroSubBits.push(el('span', {}, [
+            el('b', {}, [tName]),
+            ' · ',
+            d === 0 ? 'today' : (d === 1 ? '1 day' : `${d} days`)
         ]));
     }
-
-    // today's status meters
-    root.appendChild(el('div', { class: 'card' }, [
-        el('h4', {}, ['Today\'s status']),
-        meter('Body', phys
-            ? `${(phys.drills_completed || []).filter((d) => d.done).length} / ${(phys.drills_completed || []).length} drills · energy ${phys.energy_1_10 || '–'} / 10`
-            : 'no log yet',
-            '#physical', phys ? 'logged' : 'log →'),
-        meter('Mind', ment
-            ? `${[ment.visualization_done, ment.breathing_done, ment.in_bout_cue_practice].filter(Boolean).length} / 3 daily reps · ${(ment.scenarios_rehearsed || []).length} scenarios`
-            : 'no log yet',
-            '#mental', ment ? 'logged' : 'log →')
+    root.appendChild(el('div', { class: 'today-hero stagger' }, [
+        el('h1', { class: 'today-greeting' }, [
+            greeting(), ', ',
+            el('span', { class: 'accent' }, [profile.name]),
+            '.'
+        ]),
+        el('div', { class: 'today-sub' }, heroSubBits)
     ]));
 
-    // recent bouts
+    const bodyMetric = phys
+        ? {
+            val: `${(phys.drills_completed || []).filter((d) => d.done).length}/${(phys.drills_completed || []).length || '–'}`,
+            foot: phys.energy_1_10 ? `energy ${phys.energy_1_10}/10` : 'logged'
+        }
+        : { val: '—', foot: 'no log yet' };
+    const mindMetric = ment
+        ? {
+            val: `${[ment.visualization_done, ment.breathing_done, ment.in_bout_cue_practice].filter(Boolean).length}/3`,
+            foot: (ment.scenarios_rehearsed || []).length
+                ? `${(ment.scenarios_rehearsed || []).length} scenarios rehearsed`
+                : 'logged'
+        }
+        : { val: '—', foot: 'no log yet' };
+
+    root.appendChild(el('div', { class: 'metric-grid' }, [
+        metricCell('TODAY · BODY', bodyMetric.val, bodyMetric.foot, '#physical'),
+        metricCell('TODAY · MIND', mindMetric.val, mindMetric.foot, '#mental')
+    ]));
+
     if (recentBouts.length) {
-        root.appendChild(el('div', { class: 'section-head', style: { marginTop: '24px' } }, [
-            el('h2', {}, ['Recent bouts']),
-            el('a', { href: '#bouts', class: 'btn-link' }, ['view all →'])
+        root.appendChild(el('div', { class: 'label-row', style: { marginTop: '28px' } }, [
+            el('span', { class: 'label' }, ['Recent bouts']),
+            el('a', { href: '#bouts', class: 'label label-gold', style: { textDecoration: 'none' } }, ['VIEW ALL →'])
         ]));
         for (const b of recentBouts) {
-            root.appendChild(el('a', {
-                href: `#bouts/show?id=${b.id}`,
-                class: `bout-row ${b.outcome || ''}`,
-                style: { textDecoration: 'none' }
-            }, [
-                el('div', { class: 'bout-date' }, [fmtDate(b.date)]),
-                el('div', {}, [
-                    el('div', { class: 'bout-opponent' }, [b.opponent_name || '—']),
-                    el('div', { class: 'bout-context' }, [b.context || ''])
-                ]),
-                el('div', { class: 'bout-score' }, [
-                    el('span', { class: 'you' }, [String(b.my_score ?? '–')]),
-                    ' – ', String(b.their_score ?? '–')
-                ])
-            ]));
+            root.appendChild(boutCard(b));
         }
     } else {
-        root.appendChild(el('div', { class: 'card', style: { marginTop: '24px' } }, [
-            el('p', { class: 'muted italic' }, ['No bouts yet.']),
-            el('a', { href: '#bouts/new', class: 'btn-link' }, ['Log a bout →'])
+        root.appendChild(el('div', { class: 'empty', style: { marginTop: '20px' } }, [
+            el('p', { class: 'empty-line' }, ['Today is quiet. The first bout opens the journal.']),
+            el('a', { href: '#bouts/new', class: 'btn btn-primary btn-mono-label empty-cta' }, ['Log a bout'])
         ]));
     }
 
-    // scout quick-look
     if (opps.length) {
-        root.appendChild(el('div', { class: 'section-head', style: { marginTop: '24px' } }, [
-            el('h2', {}, ['Scouts']),
-            el('a', { href: '#opponents', class: 'btn-link' }, ['view all →'])
+        root.appendChild(el('div', { class: 'label-row', style: { marginTop: '28px' } }, [
+            el('span', { class: 'label' }, ['Scout · recent']),
+            el('a', { href: '#opponents', class: 'label label-gold', style: { textDecoration: 'none' } }, ['VIEW ALL →'])
         ]));
-        const top = opps.slice(0, 6);
-        root.appendChild(el('div', { class: 'chips' }, top.map((o) =>
-            el('a', { href: `#opponents/show?id=${o.id}`, class: 'chip' }, [o.name])
+        root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut)' } }, opps.slice(0, 6).map((o) =>
+            el('a', { href: `#opponents/show?id=${o.id}`, class: 'chip', style: { textDecoration: 'none' } }, [o.name])
         )));
     }
 
-    // quick actions
-    root.appendChild(el('div', { style: { marginTop: '24px' } }, [
-        el('h4', {}, ['Quick log']),
-        el('div', { class: 'btn-row' }, [
-            el('a', { href: '#bouts/new', class: 'btn' }, ['Bout']),
-            el('a', { href: '#physical', class: 'btn btn-ghost' }, ['Body']),
-            el('a', { href: '#mental', class: 'btn btn-ghost' }, ['Mind']),
-            el('a', { href: '#lessons', class: 'btn btn-ghost' }, ['Lesson'])
+    root.appendChild(el('div', { style: { padding: '32px var(--gut) 16px' } }, [
+        el('div', { class: 'label', style: { marginBottom: '14px' } }, ['Quick log']),
+        el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } }, [
+            el('a', { href: '#bouts/new', class: 'btn btn-primary btn-mono-label' }, ['+ Bout']),
+            el('a', { href: '#physical', class: 'btn btn-ghost btn-mono-label' }, ['Body']),
+            el('a', { href: '#mental', class: 'btn btn-ghost btn-mono-label' }, ['Mind']),
+            el('a', { href: '#lessons', class: 'btn btn-ghost btn-mono-label' }, ['Lesson'])
         ])
     ]));
 
-    // settings shortcut
-    root.appendChild(el('div', { class: 'divider' }));
-    root.appendChild(el('div', { class: 'btn-row' }, [
-        el('a', { href: '#tournaments', class: 'btn-link' }, ['Tournaments →']),
-        el('a', { href: '#import-v1', class: 'btn-link' }, ['Import v1 data →'])
+    root.appendChild(el('div', { class: 'foil-divider' }));
+    root.appendChild(el('div', { style: { display: 'flex', gap: '20px', justifyContent: 'center', padding: '0 var(--gut) 28px' } }, [
+        el('a', { href: '#tournaments', class: 'label', style: { textDecoration: 'none' } }, ['Tournaments →']),
+        el('a', { href: '#import-v1', class: 'label', style: { textDecoration: 'none' } }, ['Import v1 →'])
     ]));
 }
 
@@ -134,12 +115,63 @@ function greeting() {
     return 'Good evening';
 }
 
-function meter(label, data, href, action) {
-    return el('div', { class: 'meter' }, [
-        el('div', {}, [
-            el('div', { class: 'meter-label' }, [label]),
-            el('div', { class: 'kicker' }, [data])
+function metricCell(label, val, foot, href) {
+    return el('a', { href, class: 'metric', style: { textDecoration: 'none', color: 'inherit' } }, [
+        el('div', { class: 'metric-label' }, [label]),
+        el('div', { class: 'metric-val' }, [val]),
+        el('div', { class: 'metric-foot' }, [foot])
+    ]);
+}
+
+function boutCard(b) {
+    const my = b.my_score ?? 0;
+    const their = b.their_score ?? 0;
+    const isWin = b.outcome === 'win';
+    const isLoss = b.outcome === 'loss';
+
+    const total = my + their;
+    const ticks = [];
+    for (let i = 0; i < total; i++) {
+        ticks.push(el('span', { class: i < my ? 'touch-tick is-scored' : 'touch-tick' }));
+    }
+    const acts = Array.isArray(b.scoring_actions) ? b.scoring_actions : [];
+    const lastAct = acts.length ? acts[acts.length - 1] : null;
+    if (lastAct && /flick/i.test(lastAct.tactic_slug || '') && my > 0) {
+        if (ticks[my - 1]) {
+            ticks[my - 1] = el('span', { class: 'touch-tick is-flick' });
+        }
+    }
+
+    const tags = [];
+    if (b.opponent_rating) tags.push(el('span', { class: 'bout-card-opp-tag' }, [b.opponent_rating]));
+    (b.opponent_archetypes || []).forEach((a) => tags.push(el('span', { class: 'bout-card-opp-tag' }, [a])));
+    if (b.opponent_club) tags.push(el('span', { class: 'bout-card-opp-tag' }, [b.opponent_club]));
+
+    const meta = [];
+    meta.push(el('span', {}, [fmtDate(b.date).toUpperCase()]));
+    if (b.context) meta.push(el('span', {}, [String(b.context).replace(/_/g, ' ').toUpperCase()]));
+    if (b.location) meta.push(el('span', {}, [b.location.toUpperCase()]));
+
+    return el('a', {
+        href: `#bouts/show?id=${b.id}`,
+        class: 'bout-card',
+        style: { textDecoration: 'none', color: 'inherit', display: 'flex' }
+    }, [
+        el('div', { class: 'bout-card-head' }, [
+            el('div', { class: 'bout-card-opp' }, [
+                el('div', { class: 'bout-card-opp-name' }, [b.opponent_name || '—']),
+                tags.length ? el('div', { class: 'bout-card-opp-tags' }, tags) : null
+            ]),
+            el('div', { style: { textAlign: 'right' } }, [
+                el('div', { class: 'scoreline', style: { justifyContent: 'flex-end' } }, [
+                    el('span', { class: `scoreline-num ${isWin ? 'is-win' : (isLoss ? 'is-loss' : '')}` }, [String(my)]),
+                    el('span', { class: 'scoreline-sep' }, ['—']),
+                    el('span', { class: 'scoreline-num' }, [String(their)])
+                ]),
+                ticks.length ? el('div', { class: 'touch-strip', style: { justifyContent: 'flex-end' } }, ticks) : null
+            ])
         ]),
-        el('a', { href, class: 'btn-link' }, [action])
+        b.reflection ? el('div', { class: 'bout-card-quote' }, [b.reflection]) : null,
+        meta.length ? el('div', { class: 'bout-card-meta' }, meta) : null
     ]);
 }
