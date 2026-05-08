@@ -257,3 +257,6 @@ body.is-signed-out #app { min-height: 100vh; display: flex; flex-direction: colu
 .auth { max-width: 440px; margin: 0 auto; }
 .auth-form .field-input { font-size: 17px; }
 .auth .wordmark, .auth .wordmark-lg { font-family: 'Playfair Display', 'Cormorant Garamond', Georgia, serif; }
+
+/* Fix html bg colliding with old style.css var(--ink) which is now cream */
+html { background: #08070a !important; }
