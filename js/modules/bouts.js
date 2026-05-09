@@ -9,6 +9,7 @@ import { activeProfile } from '../lib/state.js';
 import { listBouts, getBout, listOpponents, findOrCreateOpponent, loadTaxonomies } from '../lib/db.js';
 import { chipGroup, tacticTally } from '../lib/chips.js';
 import { safeWrite } from '../lib/offline.js';
+import { boutDebrief, listCoachNotes } from '../lib/coach.js';
 
 const CONTEXT_OPTIONS = [
     { value: 'club_open', label: 'Club open fencing' },
@@ -18,6 +19,9 @@ const CONTEXT_OPTIONS = [
     { value: 'other', label: 'Other' }
 ];
 
+// =====================================================
+// LIST — editorial timeline of bout-card rows
+// =====================================================
 export async function mountBoutsList(root) {
     const profile = activeProfile();
     if (!profile) {
@@ -59,6 +63,7 @@ export async function mountBoutsList(root) {
     }
 }
 
+// Render a single bout as the editorial card with sparkline + quote
 function boutCard(b) {
     const my = b.my_score ?? 0;
     const their = b.their_score ?? 0;
@@ -111,48 +116,64 @@ function boutCard(b) {
     ]);
 }
 
+// =====================================================
+// ENTRY (new + edit) — editorial form
+// =====================================================
 export async function mountBoutEntry(root, params) {
     const profile = activeProfile();
     if (!profile) {
-        root.appendChild(el('div', { class: 'empty' }, [el('p', { class: 'empty-line' }, ['Pick a profile first.'])]));
+        root.appendChild(el('div', { class: 'empty' }, [
+            el('p', { class: 'empty-line' }, ['Pick a profile first.'])
+        ]));
         return;
     }
 
     const editing = params.id ? await getBout(params.id) : null;
     const taxos = await loadTaxonomies();
     const opponents = await listOpponents();
+
     const scoringOpts = taxos.tactics.filter((t) => t.kind === 'scoring');
     const failureOpts = taxos.tactics.filter((t) => t.kind === 'failure');
 
     root.appendChild(el('div', { style: { padding: '40px var(--gut) 8px' } }, [
         el('h1', { class: 'page-eyebrow' }, [editing ? 'Edit bout' : 'Log a bout']),
-        el('div', { class: 'today-sub' }, [el('span', {}, [profile.name.toUpperCase()])])
+        el('div', { class: 'today-sub' }, [
+            el('span', {}, [profile.name.toUpperCase()])
+        ])
     ]));
 
-    const form = el('form', { onsubmit: async (e) => { e.preventDefault(); await save(); }, style: { padding: '0 var(--gut)' } });
+    const form = el('form', {
+        onsubmit: async (e) => { e.preventDefault(); await save(); },
+        style: { padding: '0 var(--gut)' }
+    });
     root.appendChild(form);
 
+    // SECTION: When / where
     form.appendChild(sectionLabel('When · where'));
     form.appendChild(el('div', { class: 'field' }, [
         el('label', { class: 'field-label' }, ['Date']),
         el('input', { type: 'date', name: 'date', class: 'field-input', value: editing?.date || todayISO(), required: true })
     ]));
 
-    const ctxField = el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Context'])]);
+    // Context — chips, not select
+    const ctxField = el('div', { class: 'field' }, [
+        el('label', { class: 'field-label' }, ['Context'])
+    ]);
     const ctxRow = el('div', { class: 'chip-row', style: { marginTop: '6px' } });
     let selectedCtx = editing?.context || 'club_open';
-    CONTEXT_OPTIONS.forEach((opt) => {
+    const ctxBtns = CONTEXT_OPTIONS.map((opt) => {
         const btn = el('button', {
             type: 'button',
             class: 'chip' + (selectedCtx === opt.value ? ' is-on' : ''),
             'data-value': opt.value,
-            onclick: () => {
+            onclick: (e) => {
                 selectedCtx = opt.value;
                 ctxRow.querySelectorAll('.chip').forEach((c) => c.classList.toggle('is-on', c.getAttribute('data-value') === opt.value));
             }
         }, [opt.label]);
-        ctxRow.appendChild(btn);
+        return btn;
     });
+    ctxBtns.forEach((b) => ctxRow.appendChild(b));
     ctxField.appendChild(ctxRow);
     form.appendChild(ctxField);
 
@@ -161,12 +182,19 @@ export async function mountBoutEntry(root, params) {
         el('input', { type: 'text', name: 'location', class: 'field-input', value: editing?.location || '', placeholder: 'club / venue' })
     ]));
 
+    // SECTION: Opponent
     form.appendChild(sectionLabel('Opponent'));
     const oppList = el('datalist', { id: 'opp-suggest' }, opponents.map((o) => el('option', { value: o.name }, [])));
     form.appendChild(oppList);
     form.appendChild(el('div', { class: 'field' }, [
         el('label', { class: 'field-label' }, ['Name']),
-        el('input', { type: 'text', name: 'opponent_name', class: 'field-input', list: 'opp-suggest', value: editing?.opponent_name || '', placeholder: 'who you fenced', required: true, autocomplete: 'off' })
+        el('input', {
+            type: 'text', name: 'opponent_name', class: 'field-input', list: 'opp-suggest',
+            value: editing?.opponent_name || '',
+            placeholder: 'who you fenced',
+            required: true,
+            autocomplete: 'off'
+        })
     ]));
     form.appendChild(el('div', { class: 'field' }, [
         el('label', { class: 'field-label' }, ['Rating']),
@@ -177,20 +205,34 @@ export async function mountBoutEntry(root, params) {
         el('input', { type: 'text', name: 'opponent_club', class: 'field-input', value: editing?.opponent_club || '', placeholder: 'home club' })
     ]));
 
+    // SECTION: Score
     form.appendChild(sectionLabel('Score'));
     form.appendChild(el('div', { class: 'field' }, [
         el('div', { style: { display: 'flex', alignItems: 'center', gap: '14px', padding: '4px 0' } }, [
-            el('input', { type: 'number', name: 'my_score', class: 'field-input field-numeric', min: 0, max: 30, value: editing?.my_score ?? '', placeholder: 'me', inputmode: 'numeric', style: { textAlign: 'center', maxWidth: '80px' } }),
+            el('input', {
+                type: 'number', name: 'my_score', class: 'field-input field-numeric',
+                min: 0, max: 30, value: editing?.my_score ?? '', placeholder: 'me', inputmode: 'numeric',
+                style: { textAlign: 'center', maxWidth: '80px' }
+            }),
             el('span', { style: { color: 'var(--ink-faint)', fontFamily: 'var(--mono)', fontSize: '20px' } }, ['—']),
-            el('input', { type: 'number', name: 'their_score', class: 'field-input field-numeric', min: 0, max: 30, value: editing?.their_score ?? '', placeholder: 'them', inputmode: 'numeric', style: { textAlign: 'center', maxWidth: '80px' } })
+            el('input', {
+                type: 'number', name: 'their_score', class: 'field-input field-numeric',
+                min: 0, max: 30, value: editing?.their_score ?? '', placeholder: 'them', inputmode: 'numeric',
+                style: { textAlign: 'center', maxWidth: '80px' }
+            })
         ])
     ]));
 
+    // SECTION: How I scored — tally per tactic
     form.appendChild(sectionLabel('How I scored'));
-    form.appendChild(el('p', { class: 'auth-tagline', style: { fontSize: '13px', margin: '0 0 12px', maxWidth: 'none' } }, ['+ marks each touch attempted; ✓ marks the ones that landed.']));
+    form.appendChild(el('p', {
+        class: 'auth-tagline',
+        style: { fontSize: '13px', margin: '0 0 12px', maxWidth: 'none' }
+    }, ['+ marks each touch attempted; ✓ marks the ones that landed.']));
     const scoringWidget = tacticTally({ options: scoringOpts.map((t) => ({ slug: t.slug, label: t.label })), values: editing?.scoring_actions || [] });
     form.appendChild(scoringWidget);
 
+    // SECTION: How they scored on me
     form.appendChild(sectionLabel('How they scored'));
     const failureWidget = chipGroup({
         options: failureOpts.map((t) => ({ slug: t.slug, label: t.label, kind: 'failure' })),
@@ -204,6 +246,7 @@ export async function mountBoutEntry(root, params) {
     });
     form.appendChild(failureWidget);
 
+    // SECTION: Reflection
     form.appendChild(sectionLabel('Reflection'));
     form.appendChild(el('div', { class: 'field' }, [
         el('label', { class: 'field-label' }, ['One line']),
@@ -214,6 +257,7 @@ export async function mountBoutEntry(root, params) {
         el('textarea', { name: 'coach_feedback', class: 'field-textarea', rows: 3, placeholder: 'if any' }, [editing?.coach_feedback || ''])
     ]));
 
+    // SUBMIT
     form.appendChild(el('div', { style: { display: 'flex', gap: '10px', marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--rule)' } }, [
         el('a', { href: '#bouts', class: 'btn btn-ghost btn-mono-label', style: { flex: '1', textDecoration: 'none' } }, ['Cancel']),
         el('button', { type: 'submit', class: 'btn btn-primary btn-mono-label', style: { flex: '2' } }, [editing ? 'Save changes' : 'Save bout'])
@@ -224,29 +268,51 @@ export async function mountBoutEntry(root, params) {
         const my = Number(fd.get('my_score'));
         const their = Number(fd.get('their_score'));
         const outcome = my === their ? 'draw' : (my > their ? 'win' : 'loss');
+
         const opName = (fd.get('opponent_name') || '').toString().trim();
         if (!opName) { toast('Opponent is required', 'error'); return; }
+
         let opponent = null;
         try {
-            opponent = await findOrCreateOpponent({ name: opName, club: (fd.get('opponent_club') || '').toString().trim() || null, rating: (fd.get('opponent_rating') || '').toString().trim() || null });
-        } catch (e) { console.warn('opponent lookup failed', e); }
+            opponent = await findOrCreateOpponent({
+                name: opName,
+                club: (fd.get('opponent_club') || '').toString().trim() || null,
+                rating: (fd.get('opponent_rating') || '').toString().trim() || null
+            });
+        } catch (e) {
+            console.warn('opponent lookup failed', e);
+        }
+
         const payload = {
-            profile_id: profile.id, date: fd.get('date'),
+            profile_id: profile.id,
+            date: fd.get('date'),
             location: (fd.get('location') || '').toString().trim() || null,
             context: selectedCtx || null,
-            opponent_id: opponent?.id || null, opponent_name: opName,
+            opponent_id: opponent?.id || null,
+            opponent_name: opName,
             opponent_rating: (fd.get('opponent_rating') || '').toString().trim() || null,
             opponent_club: (fd.get('opponent_club') || '').toString().trim() || null,
-            my_score: isNaN(my) ? null : my, their_score: isNaN(their) ? null : their, outcome,
-            scoring_actions: scoringWidget.getValues(), failure_patterns: failureWidget.getValues(),
+            my_score: isNaN(my) ? null : my,
+            their_score: isNaN(their) ? null : their,
+            outcome,
+            scoring_actions: scoringWidget.getValues(),
+            failure_patterns: failureWidget.getValues(),
             reflection: (fd.get('reflection') || '').toString().trim() || null,
             coach_feedback: (fd.get('coach_feedback') || '').toString().trim() || null
         };
+
         try {
-            if (editing) { await safeWrite({ table: 'bouts', op: 'update', payload, match: { id: editing.id } }); toast('Bout updated'); }
-            else { await safeWrite({ table: 'bouts', op: 'insert', payload }); toast('Bout logged' + (navigator.onLine ? '' : ' (offline — will sync)')); }
+            if (editing) {
+                await safeWrite({ table: 'bouts', op: 'update', payload, match: { id: editing.id } });
+                toast('Bout updated');
+            } else {
+                await safeWrite({ table: 'bouts', op: 'insert', payload });
+                toast('Bout logged' + (navigator.onLine ? '' : ' (offline — will sync)'));
+            }
             go('bouts');
-        } catch (e) { toast('Save failed: ' + e.message, 'error'); }
+        } catch (e) {
+            toast('Save failed: ' + e.message, 'error');
+        }
     }
 }
 
@@ -256,6 +322,9 @@ function sectionLabel(text) {
     ]);
 }
 
+// =====================================================
+// DETAIL — editorial bout-card with full breakdown
+// =====================================================
 export async function mountBoutDetail(root, params) {
     if (!params.id) return go('bouts');
     let b;
@@ -273,9 +342,12 @@ export async function mountBoutDetail(root, params) {
 
     root.appendChild(el('div', { style: { padding: '40px var(--gut) 8px' } }, [
         el('h1', { class: 'page-eyebrow' }, [b.opponent_name || 'Bout']),
-        el('div', { class: 'today-sub' }, [el('span', {}, [fmtDateLong(b.date).toUpperCase()])])
+        el('div', { class: 'today-sub' }, [
+            el('span', {}, [fmtDateLong(b.date).toUpperCase()])
+        ])
     ]));
 
+    // Hero score
     const total = my + their;
     const ticks = [];
     for (let i = 0; i < total; i++) {
@@ -291,7 +363,7 @@ export async function mountBoutDetail(root, params) {
             el('span', { class: `scoreline-num ${isWin ? 'is-win' : (isLoss ? 'is-loss' : '')}`, style: { fontSize: '48px' } }, [String(my)]),
             el('span', { class: 'scoreline-sep', style: { fontSize: '32px' } }, ['—']),
             el('span', { class: 'scoreline-num', style: { fontSize: '48px' } }, [String(their)]),
-            b.outcome ? el('span', { class: `scoreline-result ${isWin ? 'is-win' : (isLoss ? 'is-loss' : '')}`, style: { marginLeft: '14px' } }, [b.outcome]) : null
+            el('span', { class: `scoreline-result ${isWin ? 'is-win' : (isLoss ? 'is-loss' : '')}`, style: { marginLeft: '14px' } }, [b.outcome || ''])
         ]),
         ticks.length ? el('div', { class: 'touch-strip', style: { marginTop: '12px' } }, ticks) : null,
         el('div', { class: 'bout-card-meta', style: { marginTop: '12px' } }, [
@@ -302,6 +374,7 @@ export async function mountBoutDetail(root, params) {
         ])
     ]));
 
+    // Scoring tally
     root.appendChild(el('div', { class: 'label-row' }, [el('span', { class: 'label' }, ['How I scored'])]));
     if (b.scoring_actions?.length) {
         root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut)' } }, b.scoring_actions.map((a) =>
@@ -314,6 +387,7 @@ export async function mountBoutDetail(root, params) {
         root.appendChild(el('p', { class: 'empty-line', style: { padding: '0 var(--gut)', fontSize: '15px' } }, ['No tactics tallied.']));
     }
 
+    // Failure patterns
     root.appendChild(el('div', { class: 'label-row', style: { marginTop: '24px' } }, [el('span', { class: 'label' }, ['How they scored'])]));
     if (b.failure_patterns?.length) {
         root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut)' } }, b.failure_patterns.map((s) =>
@@ -323,11 +397,13 @@ export async function mountBoutDetail(root, params) {
         root.appendChild(el('p', { class: 'empty-line', style: { padding: '0 var(--gut)', fontSize: '15px' } }, ['Nothing logged.']));
     }
 
+    // Reflection
     if (b.reflection) {
         root.appendChild(el('div', { class: 'label-row', style: { marginTop: '24px' } }, [el('span', { class: 'label' }, ['Reflection'])]));
         root.appendChild(el('p', { class: 'bout-card-quote', style: { padding: '0 var(--gut)' } }, [b.reflection]));
     }
 
+    // Coach feedback
     if (b.coach_feedback) {
         root.appendChild(el('div', { class: 'label-row', style: { marginTop: '24px' } }, [el('span', { class: 'label' }, ['Coach said'])]));
         root.appendChild(el('p', {
@@ -345,6 +421,10 @@ export async function mountBoutDetail(root, params) {
         }, [b.coach_feedback]));
     }
 
+    // Claude debrief — generated by AI, cached in coach_notes
+    root.appendChild(buildBoutDebriefCard(b));
+
+    // Actions
     root.appendChild(el('div', { class: 'foil-divider' }));
     root.appendChild(el('div', { style: { display: 'flex', gap: '10px', padding: '0 var(--gut) 32px' } }, [
         el('a', { href: `#bouts/edit?id=${b.id}`, class: 'btn btn-ghost btn-mono-label', style: { flex: '1', textDecoration: 'none' } }, ['Edit']),
@@ -360,4 +440,91 @@ export async function mountBoutDetail(root, params) {
             }
         }, ['Delete'])
     ]));
+}
+
+// =====================================================
+// Claude bout debrief — appears under bout detail
+// =====================================================
+function buildBoutDebriefCard(bout) {
+    const wrap = el('section', {
+        class: 'coach-card',
+        style: {
+            margin: '24px var(--gut) 8px', padding: '22px 24px',
+            background: 'var(--surface)', borderRadius: 'var(--r-card, 18px)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)'
+        }
+    });
+    const head = el('div', {
+        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }
+    }, [
+        el('div', { class: 'metric-label' }, ['Debrief']),
+        el('div', { class: 'meta', style: { fontSize: '11px', color: 'var(--ink-mute)' } }, ['by Claude'])
+    ]);
+    wrap.appendChild(head);
+
+    const body = el('div', { class: 'coach-card-body' });
+    wrap.appendChild(body);
+
+    renderEmpty();
+
+    function renderEmpty() {
+        body.innerHTML = '';
+        body.appendChild(el('p', {
+            style: { margin: '6px 0 14px', color: 'var(--ink-mute)', fontStyle: 'italic' }
+        }, ['Get a debrief — what happened, the root cause, and the next training touch.']));
+        body.appendChild(el('button', {
+            type: 'button', class: 'btn btn-primary',
+            onclick: handleGenerate
+        }, ['Debrief this bout']));
+    }
+    function renderLoading() {
+        body.innerHTML = '';
+        body.appendChild(el('p', {
+            style: { margin: '6px 0', color: 'var(--ink-mute)' }
+        }, ['Asking Claude. One moment…']));
+    }
+    function renderResponse(text, model) {
+        body.innerHTML = '';
+        body.appendChild(el('div', {
+            style: { whiteSpace: 'pre-wrap', lineHeight: '1.55', fontSize: '15px', color: 'var(--ink)' }
+        }, [text]));
+        body.appendChild(el('div', {
+            class: 'kicker',
+            style: { marginTop: '12px', fontSize: '11px', color: 'var(--ink-mute)' }
+        }, [`${model || 'claude'} · click Regenerate for a fresh take`]));
+        body.appendChild(el('div', { style: { marginTop: '12px' } }, [
+            el('button', {
+                type: 'button', class: 'btn btn-ghost btn-sm',
+                style: { fontSize: '12px' }, onclick: handleGenerate
+            }, ['Regenerate'])
+        ]));
+    }
+    function renderError(msg) {
+        body.innerHTML = '';
+        body.appendChild(el('p', { style: { color: 'var(--loss)' } }, ['Could not get debrief: ' + msg]));
+        body.appendChild(el('button', {
+            type: 'button', class: 'btn btn-ghost btn-sm',
+            onclick: handleGenerate
+        }, ['Try again']));
+    }
+    async function handleGenerate() {
+        renderLoading();
+        try {
+            const res = await boutDebrief(bout.id);
+            if (res?.text) renderResponse(res.text, res.model);
+            else renderError('empty response');
+        } catch (e) {
+            renderError(e.message || String(e));
+        }
+    }
+
+    // On mount — show cached debrief if one exists
+    (async () => {
+        try {
+            const notes = await listCoachNotes({ kind: 'bout-debrief', boutId: bout.id, limit: 1 });
+            if (notes[0]) renderResponse(notes[0].response_text, notes[0].model);
+        } catch (_) { /* ignore */ }
+    })();
+
+    return wrap;
 }
