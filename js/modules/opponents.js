@@ -15,6 +15,7 @@ import {
     priorityFor, flatPriorityOpponents,
     STYLE_QUESTIONS, SHARED_PATTERNS, PRIORITY_META
 } from '../lib/priority-targets.js';
+import { opponentProfiler, listCoachNotes } from '../lib/coach.js';
 
 const ARCHETYPES = [
     { slug: 'aggressive',   label: 'Aggressive' },
@@ -223,6 +224,9 @@ export async function mountOpponentDetail(root, params) {
             } catch (e) { toast('Save failed: ' + e.message, 'error'); }
         }, 500);
     }
+
+    // Claude profiler — Sonnet read on this opponent
+    root.appendChild(buildOpponentProfilerCard(opp));
 
     // Style profile — 10-question interview
     root.appendChild(styleProfileEditor(opp, (vals) => { opp.style_profile = vals; }));
@@ -637,6 +641,94 @@ export function styleProfileEditor(opp, onSave) {
             el('div', { class: 'kicker', style: { marginTop: '4px', fontSize: '11px', opacity: 0.65 } }, [q.hint])
         ]));
     }
+
+    return wrap;
+}
+
+
+// =====================================================
+// Opponent profiler card — Claude reads the opponent
+// =====================================================
+function buildOpponentProfilerCard(opp) {
+    const wrap = el('section', {
+        class: 'coach-card',
+        style: {
+            margin: '14px var(--gut) 8px', padding: '22px 24px',
+            background: 'var(--surface)', borderRadius: 'var(--r-card, 18px)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)'
+        }
+    });
+    const head = el('div', {
+        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }
+    }, [
+        el('div', { class: 'metric-label' }, ['Claude\'s read']),
+        el('div', { class: 'meta', style: { fontSize: '11px', color: 'var(--ink-mute)' } }, ['style + opening plan'])
+    ]);
+    wrap.appendChild(head);
+
+    const body = el('div', { class: 'coach-card-body' });
+    wrap.appendChild(body);
+
+    renderEmpty();
+
+    function renderEmpty() {
+        body.innerHTML = '';
+        body.appendChild(el('p', {
+            style: { margin: '6px 0 14px', color: 'var(--ink-mute)', fontStyle: 'italic' }
+        }, [`A starter style read on ${opp.name} plus a 30-second opening-touch plan.`]));
+        body.appendChild(el('button', {
+            type: 'button', class: 'btn btn-primary',
+            onclick: handleGenerate
+        }, ['Get Claude\'s read']));
+    }
+    function renderLoading() {
+        body.innerHTML = '';
+        body.appendChild(el('p', {
+            style: { margin: '6px 0', color: 'var(--ink-mute)' }
+        }, ['Asking Claude. One moment…']));
+    }
+    function renderResponse(text, model) {
+        body.innerHTML = '';
+        body.appendChild(el('div', {
+            style: { whiteSpace: 'pre-wrap', lineHeight: '1.55', fontSize: '15px', color: 'var(--ink)' }
+        }, [text]));
+        body.appendChild(el('div', {
+            class: 'kicker',
+            style: { marginTop: '12px', fontSize: '11px', color: 'var(--ink-mute)' }
+        }, [model || 'claude']));
+        body.appendChild(el('div', { style: { marginTop: '12px' } }, [
+            el('button', {
+                type: 'button', class: 'btn btn-ghost btn-sm',
+                style: { fontSize: '12px' }, onclick: handleGenerate
+            }, ['Regenerate'])
+        ]));
+    }
+    function renderError(msg) {
+        body.innerHTML = '';
+        body.appendChild(el('p', { style: { color: 'var(--loss)' } }, ['Could not get profile: ' + msg]));
+        body.appendChild(el('button', {
+            type: 'button', class: 'btn btn-ghost btn-sm',
+            onclick: handleGenerate
+        }, ['Try again']));
+    }
+    async function handleGenerate() {
+        renderLoading();
+        try {
+            const res = await opponentProfiler(opp.id);
+            if (res?.text) renderResponse(res.text, res.model);
+            else renderError('empty response');
+        } catch (e) {
+            renderError(e.message || String(e));
+        }
+    }
+
+    // Show cached profile if one exists
+    (async () => {
+        try {
+            const notes = await listCoachNotes({ kind: 'opponent-profiler', opponentId: opp.id, limit: 1 });
+            if (notes[0]) renderResponse(notes[0].response_text, notes[0].model);
+        } catch (_) { /* ignore */ }
+    })();
 
     return wrap;
 }
