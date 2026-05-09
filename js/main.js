@@ -48,6 +48,7 @@ async function bootstrap() {
     await loadOrCreateProfiles(session.user.id);
     mountProfileSwitcher();
     startRouter();
+    setupBottomNavActive();
     refreshTournamentCountdown();
 
     // when active profile changes, re-render
@@ -92,6 +93,21 @@ async function bootstrap() {
             location.reload();
         }
     });
+}
+
+
+function setupBottomNavActive() {
+    const nav = document.getElementById('bottom-nav');
+    if (!nav) return;
+    function update() {
+        const hash = (location.hash || '#dashboard').slice(1).split('/')[0].split('?')[0];
+        nav.querySelectorAll('a').forEach((a) => {
+            const route = a.getAttribute('data-route');
+            a.classList.toggle('is-active', route === hash);
+        });
+    }
+    window.addEventListener('hashchange', update);
+    update();
 }
 
 bootstrap().catch((e) => {
