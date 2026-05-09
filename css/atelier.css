@@ -260,3 +260,50 @@ body.is-signed-out #app { min-height: 100vh; display: flex; flex-direction: colu
 
 /* Fix html bg colliding with old style.css var(--ink) which is now cream */
 html { background: #08070a !important; }
+
+/* ============================================================
+   Priority targets — Summer Nationals 2026
+   ============================================================ */
+.priority-targets { margin-bottom: 28px; }
+
+.priority-bucket-head {
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--gold);
+}
+
+.priority-card,
+.priority-club {
+  border: 1px solid var(--rule);
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+.priority-card:hover,
+.priority-club:hover {
+  border-color: var(--rule-strong);
+}
+
+.priority-record-cold {
+  color: var(--loss);
+}
+.priority-record-warm {
+  color: var(--gold);
+}
+
+.btn-sm {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+}
+
+.style-profile {
+  margin: 22px 0 28px;
+  padding: 20px var(--gut);
+  background: var(--surface);
+  border-radius: var(--r-card);
+}
+.style-profile .field { margin-bottom: 14px; }
+.style-profile textarea.field-input {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+}
