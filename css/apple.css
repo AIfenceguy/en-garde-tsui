@@ -652,3 +652,41 @@ a:hover { color: var(--accent-hi); }
     fill: currentColor;
     fill-opacity: 0.18;
 }
+
+/* ============================================================
+   FIX: keep CTA blue regardless of per-profile --accent override
+   in style.css. Use a non-overridden variable for primary buttons.
+   ============================================================ */
+:root {
+    --cta: #0071e3;
+    --cta-hi: #0077ed;
+    --cta-soft: rgba(0, 113, 227, 0.10);
+}
+
+.btn,
+button.btn,
+.btn-primary {
+    background: var(--cta) !important;
+    color: #fff !important;
+}
+.btn:hover,
+button.btn:hover,
+.btn-primary:hover {
+    background: var(--cta-hi) !important;
+}
+.btn-ghost {
+    background: transparent !important;
+    color: var(--cta) !important;
+}
+.btn-ghost:hover {
+    background: var(--cta-soft) !important;
+}
+a { color: var(--cta); }
+a:hover { color: var(--cta-hi); }
+.priority-record-warm { color: var(--cta); }
+.bout-row .bout-score .you { color: var(--cta); }
+.field:focus-within { border-bottom-color: var(--cta) !important; }
+.auth-form .field-input:focus { border-color: var(--cta) !important; }
+.bottom-nav a.active,
+.bottom-nav a.is-active,
+.bottom-nav a[aria-current='page'] { color: var(--cta) !important; }
