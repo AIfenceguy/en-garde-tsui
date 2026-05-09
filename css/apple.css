@@ -1,0 +1,582 @@
+/* ============================================================
+   Atelier Tsui — Apple skin
+   Loads after atelier.css and overrides the design tokens to
+   match apple.com/iphone marketing-page aesthetics.
+   - Light theme primary
+   - SF Pro Display + SF Pro Text (system stack)
+   - Apple blue #0071e3 for primary CTAs
+   - Pill buttons, big-radius cards, generous spacing, subtle shadow
+   - Italic Playfair "Atelier Tsui" wordmark stays as luxury logotype
+   - Gold accent reserved for the sparkline + wordmark only
+   ============================================================ */
+
+:root {
+    /* Canvas — light surfaces */
+    --bg:           #fbfbfd;
+    --surface:      #ffffff;
+    --surface-2:    #f5f5f7;
+    --surface-hi:   #ffffff;
+
+    /* Ink — Apple grays */
+    --ink:          #1d1d1f;
+    --ink-soft:     rgba(29, 29, 31, 0.78);
+    --ink-mute:     rgba(29, 29, 31, 0.52);
+    --ink-faint:    rgba(29, 29, 31, 0.32);
+    --ink-ghost:    rgba(29, 29, 31, 0.12);
+
+    /* Rules */
+    --rule:         rgba(29, 29, 31, 0.10);
+    --rule-strong:  rgba(29, 29, 31, 0.18);
+
+    /* Apple blue — primary action color */
+    --accent:       #0071e3;
+    --accent-hi:    #0077ed;
+    --accent-soft:  rgba(0, 113, 227, 0.10);
+
+    /* Gold stays — but ONLY for sparkline accent + wordmark */
+    --gold:         #b88a3a;
+    --gold-soft:    #c79f5d;
+    --gold-deep:    #8e6a23;
+    --gold-cream:   #d8b67a;
+    --gold-glow:    rgba(184, 138, 58, 0.18);
+
+    /* Result tones — subtle, Apple-style */
+    --win:          #2a8c4a;
+    --loss:         #c1453a;
+
+    /* Profile accents — kept */
+    --p-raedyn:     #c46a4a;
+    --p-kaylan:     #6f9bb5;
+    --p-parent:     #9b9285;
+
+    /* Type — SF Pro stack */
+    --serif:  'Playfair Display', 'Cormorant Garamond', Georgia, serif;
+    --sans:   -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', system-ui, sans-serif;
+    --mono:   ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+    /* Geometry — Apple uses big radii */
+    --r-card:   18px;
+    --r-tight:  10px;
+    --r-pill:   980px;
+
+    /* Spacing — generous Apple rhythm */
+    --gut:         24px;
+    --col-gap:    16px;
+    --section-gap: 56px;
+}
+
+/* ============================================================
+   Body / scaffold
+   ============================================================ */
+html, body { background: var(--bg); }
+body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.47;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* ============================================================
+   Topbar — clean, light, italic wordmark in Apple gray
+   ============================================================ */
+.topbar {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--rule);
+}
+.brand,
+.wordmark, .wordmark-lg {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink);
+    font-weight: 500;
+    letter-spacing: -0.005em;
+}
+.brand { font-size: 22px; }
+
+/* Profile switcher — Apple segmented capsule */
+.profile-switcher {
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-pill);
+    padding: 6px 14px;
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 160ms ease;
+}
+.profile-switcher:hover { background: #ebebed; }
+.profile-mark {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+    background: var(--ink-mute);
+}
+
+body[data-active-role="raedyn"] .profile-mark { background: var(--p-raedyn); }
+body[data-active-role="kaylan"] .profile-mark { background: var(--p-kaylan); }
+body[data-active-role="parent"] .profile-mark { background: var(--p-parent); }
+
+/* ============================================================
+   Headlines — big bold display headlines, negative letter spacing
+   ============================================================ */
+h1, h2, h3, h4 {
+    font-family: var(--sans);
+    color: var(--ink);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+}
+h1, .page-eyebrow {
+    font-size: 40px;
+    line-height: 1.08;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+h2 { font-size: 28px; line-height: 1.14; letter-spacing: -0.018em; }
+h3 { font-size: 22px; line-height: 1.18; }
+h4 { font-size: 17px; font-weight: 600; }
+
+.kicker, .meta, .field-label, .opp-record-label {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+}
+
+/* Italic editorial accents — Playfair italic stays as a luxury detail */
+.today-greet, .auth-tagline, .editorial-italic {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-soft);
+}
+
+/* ============================================================
+   Buttons — pill, blue primary, ghost secondary
+   ============================================================ */
+.btn,
+button.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    text-transform: none;
+    padding: 10px 22px;
+    border: none;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: background 160ms ease, transform 80ms ease;
+}
+.btn:hover { background: var(--accent-hi); }
+.btn:active { transform: scale(0.985); }
+
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hi); }
+
+.btn-ghost {
+    background: transparent;
+    color: var(--accent);
+    border: none;
+}
+.btn-ghost:hover { background: var(--accent-soft); }
+
+.btn-mono-label {
+    font-family: var(--sans);
+    text-transform: none;
+    letter-spacing: -0.005em;
+    font-weight: 500;
+}
+
+.btn-sm {
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: var(--r-pill);
+}
+
+/* ============================================================
+   Cards — no borders, big radius, subtle shadow
+   ============================================================ */
+.card,
+.bout-card,
+.scout-card,
+.opp-card,
+.priority-card,
+.priority-club,
+.style-profile {
+    background: var(--surface);
+    border: none;
+    border-radius: var(--r-card);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    padding: 22px 24px;
+}
+.card:hover,
+.bout-card:hover,
+.opp-card:hover,
+.priority-card:hover,
+.priority-club:hover {
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+}
+
+/* Some cards live on the gray section — flip to white */
+section.gray-section .card,
+section.gray-section .opp-card,
+.gray-bg .card { background: #ffffff; }
+
+.bordered-accent { border-left: none; }
+
+/* ============================================================
+   Form fields — Apple Settings feel
+   ============================================================ */
+.field {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 0;
+}
+.field:last-child { border-bottom: none; }
+.field-label {
+    color: var(--ink-mute);
+    font-family: var(--sans);
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    font-size: 13px;
+    text-transform: none;
+}
+.field-input,
+.field-select,
+.field-textarea,
+.field input,
+.field textarea,
+.field select {
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    border: none;
+    outline: none;
+    padding: 0;
+    width: 100%;
+}
+.field-input::placeholder,
+.field-textarea::placeholder {
+    color: var(--ink-faint);
+    font-style: normal;
+    font-family: var(--sans);
+}
+.field:focus-within { border-bottom-color: var(--accent); }
+
+.field-numeric {
+    font-family: var(--sans);
+    font-variant-numeric: tabular-nums;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+/* Chips — Apple segmented control feel */
+.chip {
+    background: var(--surface-2);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    text-transform: none;
+    padding: 8px 14px;
+    border: none;
+    border-radius: var(--r-pill);
+}
+.chip:hover { background: #e8e8ea; }
+.chip.active,
+.chip.selected,
+.chip[aria-pressed="true"] {
+    background: var(--accent);
+    color: #fff;
+}
+.chip.failure { background: rgba(193, 69, 58, 0.10); color: var(--loss); }
+
+.tag {
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    padding: 3px 9px;
+    border-radius: var(--r-pill);
+    border: none;
+}
+
+/* ============================================================
+   Bottom nav — white, blue active indicator
+   ============================================================ */
+.bottom-nav {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-top: 1px solid var(--rule);
+    box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.02);
+    padding: 8px 4px env(safe-area-inset-bottom);
+}
+.bottom-nav a {
+    color: var(--ink-mute);
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    text-decoration: none;
+    padding: 6px 4px;
+    transition: color 160ms ease;
+}
+.bottom-nav a:hover { color: var(--ink); }
+.bottom-nav a.active,
+.bottom-nav a[aria-current="page"] {
+    color: var(--accent);
+}
+.nav-icon {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    line-height: 1;
+}
+.nav-icon svg {
+    width: 24px; height: 24px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.bottom-nav a.active .nav-icon svg,
+.bottom-nav a[aria-current="page"] .nav-icon svg {
+    fill: currentColor;
+    fill-opacity: 0.18;
+}
+
+.nav-label {
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+/* ============================================================
+   Sparkline / scoreline — keep gold but lighter, more reflective
+   ============================================================ */
+.scoreline-stroke,
+.touch-strip-mark {
+    stroke: var(--gold-cream) !important;
+}
+.scoreline path,
+.scoreline polyline {
+    stroke: var(--gold) !important;
+}
+.touch-strip-flick { fill: var(--gold) !important; }
+
+/* ============================================================
+   Auth screen — white background, italic Playfair wordmark big
+   ============================================================ */
+body.is-signed-out {
+    background: var(--bg);
+}
+.auth {
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 80px var(--gut);
+    text-align: center;
+}
+.auth .wordmark, .auth .wordmark-lg {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink);
+    font-size: 56px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+.auth .auth-eyebrow {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin: 12px 0 32px;
+}
+.auth .auth-tagline {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 19px;
+    line-height: 1.45;
+    margin-bottom: 32px;
+}
+.auth-form .field-input {
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 17px;
+}
+.auth-form .field-input:focus {
+    border-color: var(--accent);
+    background: #fff;
+    outline: none;
+}
+.auth-footer {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-top: 56px;
+}
+
+/* ============================================================
+   Page sections — generous padding, alternating surfaces
+   ============================================================ */
+.page {
+    padding: 56px var(--gut);
+}
+.section {
+    padding: 32px 0;
+}
+.section-head {
+    margin-bottom: 16px;
+}
+.section-head h2 {
+    font-size: 28px;
+    letter-spacing: -0.018em;
+}
+
+/* ============================================================
+   Priority targets — Apple card treatment
+   ============================================================ */
+.priority-bucket-head {
+    color: var(--ink-mute);
+    font-family: var(--sans);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+.priority-card,
+.priority-club {
+    background: var(--surface-2);
+    border: none;
+    box-shadow: none;
+    transition: background 160ms ease;
+    padding: 16px 18px;
+    margin-bottom: 8px;
+}
+.priority-card:hover,
+.priority-club:hover {
+    background: #eeeef0;
+}
+.priority-record-cold { color: var(--loss); }
+.priority-record-warm { color: var(--accent); }
+
+/* Style profile interview — gray section feel */
+.style-profile {
+    background: var(--surface-2);
+    box-shadow: none;
+    padding: 24px var(--gut);
+}
+.style-profile textarea.field-input {
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 10px 12px;
+    min-height: 64px;
+    font-size: 16px;
+}
+
+/* ============================================================
+   Bouts list / Today metrics — Apple card grid
+   ============================================================ */
+.metric-grid {
+    gap: 16px;
+}
+.metric-grid .metric {
+    background: var(--surface);
+    border-radius: var(--r-card);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    padding: 18px 20px;
+}
+.metric-value {
+    font-family: var(--sans);
+    font-variant-numeric: tabular-nums;
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+}
+.metric-label {
+    font-family: var(--sans);
+    font-size: 12px;
+    color: var(--ink-mute);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.bout-row {
+    background: var(--surface);
+    border: none;
+    border-bottom: 1px solid var(--rule);
+    padding: 14px var(--gut);
+    color: var(--ink);
+    font-family: var(--sans);
+}
+.bout-row:hover { background: var(--surface-2); }
+.bout-row .bout-date,
+.bout-row .bout-context {
+    color: var(--ink-mute);
+    font-size: 13px;
+}
+.bout-row .bout-opponent {
+    font-weight: 500;
+    color: var(--ink);
+}
+.bout-row .bout-score .you { color: var(--accent); font-weight: 600; }
+
+/* Outcome accents */
+.bout-row.win { box-shadow: inset 3px 0 0 var(--win); }
+.bout-row.loss { box-shadow: inset 3px 0 0 var(--loss); }
+
+/* ============================================================
+   Toasts — Apple modal feel
+   ============================================================ */
+.toast {
+    background: rgba(29, 29, 31, 0.92);
+    color: #fff;
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+    padding: 12px 18px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* ============================================================
+   Misc — kill any leftover dark-theme borders
+   ============================================================ */
+.bordered-accent,
+.opp-card,
+.scout-card { border-left: none; }
+
+/* Ghost / outline links pick up Apple blue */
+a { color: var(--accent); }
+a:hover { color: var(--accent-hi); }
