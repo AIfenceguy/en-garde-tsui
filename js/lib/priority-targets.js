@@ -1,12 +1,12 @@
 // Priority opponent intel for Summer Nationals 2026 prep.
-// Pulled from fencingtracker.com on 2026-05-08.
+// Pulled from fencingtracker.com on 2026-05-10.
 // Bundled as JS so the app reads it without an extra fetch.
 //
 // Principle: Repeat-loss against same fencer = personal-matchup gap.
 // Repeat-loss across multiple fencers from same CLUB = club-style gap.
 
 export const PRIORITY_META = {
-    pulled_at: '2026-05-08',
+    pulled_at: '2026-05-10',
     source: 'fencingtracker.com',
     raedyn_url: 'https://fencingtracker.com/p/100280844/Raedyn%20Ho%20Hin-Tsui',
     kaylan_url: 'https://fencingtracker.com/p/100280845/Kaylan%20Ho%20Sen-Tsui',
@@ -58,15 +58,15 @@ export const PRIORITY_TARGETS = {
               notable_fencers: ['CHANG Eric Jonathan 1-5'] }
         ],
         never_beaten: [
-            { name: 'BIELER Mason',     record: '0-10', club: 'LA International Fencing',                       rating: 'C24', priority: 'high',
+            { name: 'BIELER Mason',     record: '0-10', club: 'LA International Fencing',                       rating: 'A26', priority: 'high',
               note: 'NOT mentioned in interview. Foil-IQ blind spot — profile this fencer first.' },
-            { name: 'CHANG Jeremy',     record: '0-7',  club: 'SoCAL Fencing Center / OC International',         rating: 'D25', priority: 'high',
+            { name: 'CHANG Jeremy',     record: '0-7',  club: 'SoCAL Fencing Center / OC International',         rating: 'C26', priority: 'high',
               note: 'Clubmate at SoCAL — daily training opportunity. Live-bout him weekly.' },
-            { name: 'CHANG Jonathan',   record: '0-7',  club: 'Silicon Valley Fencing Center',                   rating: 'A25', priority: 'low',
+            { name: 'CHANG Jonathan',   record: '0-7',  club: 'Silicon Valley Fencing Center',                   rating: 'A26', priority: 'low',
               note: 'A-rated. Probably aging out of Cadet pool by July.' },
-            { name: 'ZHONG Maxwell',    record: '0-4',  club: 'Silicon Valley Fencing Center',                   rating: 'B25', priority: 'med' },
-            { name: 'WEI Winston',      record: '0-4',  club: 'Massialas Foundation (M Team)',                   rating: 'C25', priority: 'med' },
-            { name: 'CHOI Ethan',       record: '0-4',  club: 'Precision Athletics Fencing Club',                rating: '',    priority: 'med' }
+            { name: 'ZHONG Maxwell',    record: '0-4',  club: 'Silicon Valley Fencing Center',                   rating: 'A26', priority: 'med' },
+            { name: 'WEI Winston',      record: '0-4',  club: 'Massialas Foundation (M Team)',                   rating: 'B26', priority: 'med' },
+            { name: 'CHOI Ethan',       record: '0-4',  club: 'Precision Athletics Fencing Club',                rating: 'B26',    priority: 'med' }
         ],
         winnable: [
             { name: 'LI Daniel',         record: '3-9', club: 'Team Touche Fencing Center',                       rating: 'C26', priority: 'high',
@@ -75,8 +75,8 @@ export const PRIORITY_TARGETS = {
               note: 'Raedyn cited 7:6 win. That\'s the 1. Confirmation bias — the data says 1-7.' },
             { name: 'YE Jerry',          record: '7-7', club: 'Golubitsky Fencing Center',                        rating: 'E26', priority: 'med',
               note: 'Even-record winnable matchup.' },
-            { name: 'LOZANO Veyron J.',  record: '1-7', club: 'LA International Fencing',                         rating: 'B26', priority: 'med' },
-            { name: 'FUKUDA Brando',     record: '1-7', club: 'Massialas Foundation (M Team)',                    rating: 'D25', priority: 'med' }
+            { name: 'LOZANO Veyron J.',  record: '1-7', club: 'LA International Fencing',                         rating: 'A26', priority: 'med' },
+            { name: 'FUKUDA Brando',     record: '1-7', club: 'Massialas Foundation (M Team)',                    rating: 'C25', priority: 'med' }
         ]
     },
 
@@ -98,16 +98,16 @@ export const PRIORITY_TARGETS = {
               notable_fencers: ['GUDIMETLA Siddhanth 0-6'] }
         ],
         never_beaten: [
-            { name: 'YU ShiYu (Henry)',    record: '0-7', club: 'Golubitsky Fencing Center',    rating: 'D24', priority: 'high' },
+            { name: 'YU ShiYu (Henry)',    record: '0-7', club: 'Golubitsky Fencing Center',    rating: 'D25', priority: 'high' },
             { name: 'GUDIMETLA Siddhanth', record: '0-6', club: 'Team Touche Fencing Center',   rating: 'E25', priority: 'high' },
             { name: 'HONG Edwin',          record: '0-6', club: 'Golubitsky Fencing Center',    rating: 'E25', priority: 'high' },
-            { name: 'RAU Shogun',          record: '0-5', club: 'Silicon Valley Fencing Center', rating: 'E24', priority: 'med' }
+            { name: 'RAU Shogun',          record: '0-5', club: 'Silicon Valley Fencing Center', rating: 'D26', priority: 'med' }
         ],
         winnable: [
-            { name: 'WU Gengze (Daniel)', record: '3-8', club: 'Orange County International Fencers Club', rating: 'U',   priority: 'high',
+            { name: 'WU Gengze (Daniel)', record: '3-8', club: 'Orange County International Fencers Club', rating: 'E26',   priority: 'high',
               note: '3 wins on record — momentum exists.' },
             { name: 'XU Ethan',           record: '1-7', club: 'Silicon Valley Fencing Center',            rating: 'D26', priority: 'high' },
-            { name: 'YANG Steve',         record: '2-5', club: 'Silicon Valley Fencing Center',            rating: 'E26', priority: 'med' },
+            { name: 'YANG Steve',         record: '2-5', club: 'Silicon Valley Fencing Center',            rating: 'D26', priority: 'med' },
             { name: 'JEON Joohun',        record: '5-5', club: 'Elite International Fencers Club',         rating: 'U',   priority: 'med' },
             { name: 'TURBAT Travis',      record: '4-5', club: 'Precision Athletics Fencing Club',         rating: 'U',   priority: 'med' }
         ]
