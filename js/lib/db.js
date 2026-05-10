@@ -218,3 +218,26 @@ export async function nextTournament() {
     if (error) throw error;
     return data;
 }
+
+// Drill library — categorized exercise catalog (replaces hardcoded plans)
+export async function listDrillLibrary() {
+    const { data, error } = await supa
+        .from('drill_library')
+        .select('*')
+        .eq('is_archived', false)
+        .order('category')
+        .order('label');
+    if (error) throw error;
+    return data || [];
+}
+
+export async function addDrillToLibrary({ category, label, default_reps, default_sets, default_rest_s, notes }) {
+    const slug = String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const { data, error } = await supa
+        .from('drill_library')
+        .insert({ category, slug, label, default_reps, default_sets, default_rest_s, notes })
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+}
