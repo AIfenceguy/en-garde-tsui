@@ -690,3 +690,64 @@ a:hover { color: var(--cta-hi); }
 .bottom-nav a.active,
 .bottom-nav a.is-active,
 .bottom-nav a[aria-current='page'] { color: var(--cta) !important; }
+
+/* ============================================================
+   FONT OVERRIDE — drop italic Playfair from data fields.
+   Keep italic Playfair ONLY for the .brand wordmark (Atelier Tsui)
+   and explicit .editorial-italic accents.
+   ============================================================ */
+:root {
+    --sans: 'SF Pro Text', 'SF Pro Display', -apple-system, BlinkMacSystemFont, Calibri, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Force regular sans on all data displays — opponent names, bout names, etc. */
+.opp-name,
+.bout-card-opp-name,
+.bout-card-quote,
+.priority-card .opp-name,
+.section-head h2,
+.today-greeting,
+.page-eyebrow,
+h1, h2, h3, h4, h5, h6,
+.scoreline-num,
+.metric-val,
+.metric-value,
+.field-numeric,
+.empty-line,
+.no-log,
+.bout-card,
+.opp-card,
+.priority-card,
+.priority-club,
+.coach-card,
+.style-profile,
+.scout-card {
+    font-family: var(--sans) !important;
+    font-style: normal !important;
+}
+
+/* Keep the Atelier Tsui wordmark in italic Playfair — that's the brand */
+.brand,
+.wordmark,
+.wordmark-lg,
+.editorial-italic,
+.auth-tagline {
+    font-family: 'Playfair Display', Georgia, serif !important;
+    font-style: italic !important;
+}
+
+/* The 'Good afternoon, Raedyn.' greeting — keep it editorial italic */
+.today-greeting,
+.today-greet {
+    font-family: 'Playfair Display', Georgia, serif !important;
+    font-style: italic !important;
+}
+
+/* The 'no log yet' empty-state phrase — keep italic but in sans */
+.empty .empty-line,
+.empty-line,
+.metric-foot {
+    font-style: italic !important;
+    font-family: var(--sans) !important;
+    font-weight: 400 !important;
+}
