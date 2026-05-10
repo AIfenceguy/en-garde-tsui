@@ -19,7 +19,7 @@ export function chipGroup({ options, selected, allowAdd = false, onChange = null
             const isOn = selected.has(o.slug);
             const chip = el('button', {
                 type: 'button',
-                class: 'chip' + (o.kind === 'failure' ? ' failure' : ''),
+                class: 'chip' + (isOn ? ' on is-on' : '') + (o.kind === 'failure' ? ' failure' : ''),
                 'data-slug': o.slug,
                 'data-kind': o.kind || '',
                 'aria-pressed': String(isOn),
