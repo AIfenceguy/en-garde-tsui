@@ -1,4 +1,4 @@
-// Atelier Tsui — Claude coaching Edge Function
+// En Garde — Claude coaching Edge Function
 // One Edge Function, three actions:
 //   action: 'bout-debrief'      → debrief a single bout (post-fencing analysis)
 //   action: 'today-coach-card'  → today's focus + warm-up + one drill

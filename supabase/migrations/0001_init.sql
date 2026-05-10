@@ -1,4 +1,4 @@
--- Atelier Tsui v2 schema
+-- En Garde v2 schema
 -- One family account per auth.users row; multiple profiles (raedyn, kaylan, parent)
 -- foreign-keyed to that user. UI/RLS enforces per-profile privacy boundary.
 

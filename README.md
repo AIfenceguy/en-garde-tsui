@@ -1,4 +1,4 @@
-# Atelier Tsui v2
+# En Garde v2
 
 Fencing training tracker for Raedyn (B26, Y-14/Cadet) and Kaylan (Y-12/Y-14). Built for Summer Nationals 2026 (Portland, OR · June 27–July 6).
 
@@ -49,7 +49,7 @@ Edit `js/lib/config.js` and paste in the project URL and anon key.
 This is a static site — no build step. Serve it with anything:
 
 ```bash
-cd C:\Users\ricky\atelier-tsui
+cd C:\Users\ricky\en-garde-tsui
 python -m http.server 8000
 # open http://localhost:8000
 ```
@@ -59,17 +59,17 @@ Or VS Code Live Server, or `npx serve`, etc.
 ### 6. Deploy to GitHub Pages
 
 ```bash
-cd C:\Users\ricky\atelier-tsui
+cd C:\Users\ricky\en-garde-tsui
 git init
 git add .
-git commit -m "Initial commit: Atelier Tsui v2 foundation"
-git remote add origin git@github.com:AIfenceguy/atelier-tsui.git
+git commit -m "Initial commit: En Garde v2 foundation"
+git remote add origin git@github.com:AIfenceguy/en-garde-tsui.git
 git push -u origin main
 ```
 
 Then in GitHub: **Settings → Pages → Source: `main` / root**.
 
-The site will be live at <https://aifenceguy.github.io/atelier-tsui>.
+The site will be live at <https://aifenceguy.github.io/en-garde-tsui>.
 
 **Re: `config.js`:** the deployed site needs the URL and anon key. Easiest path: temporarily un-ignore `config.js` for the deploy (the anon key is public-safe). Or set up GitHub Actions later that injects it from a secret. For MVP, just commit it on a separate `gh-pages-deploy` branch.
 
@@ -106,7 +106,7 @@ See `ASSUMPTIONS.md` after Phase 1 completion for what was inferred from the bri
 ## Repo layout
 
 ```
-atelier-tsui/
+en-garde-tsui/
   index.html
   manifest.json
   service-worker.js

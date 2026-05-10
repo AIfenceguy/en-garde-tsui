@@ -5,7 +5,7 @@ import { activeProfile } from '../lib/state.js';
 import { renderPrivateLessonsTab } from './private_lessons.js';
 import { renderGroupLessonsTab } from './group_lessons.js';
 
-const STORE_KEY = 'atelier.lessonsTab';
+const STORE_KEY = 'en-garde.lessonsTab';
 
 export async function mountLessons(root, params) {
     const profile = activeProfile();

@@ -9,10 +9,10 @@ export const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storageKey: 'atelier-tsui-auth'
+        storageKey: 'en-garde-tsui-auth'
     },
     global: {
-        headers: { 'x-client-info': 'atelier-tsui-web/2.0' }
+        headers: { 'x-client-info': 'en-garde-tsui-web/2.0' }
     }
 });
 

@@ -1,6 +1,6 @@
 {
-    "name": "Atelier Tsui",
-    "short_name": "Atelier",
+    "name": "En Garde",
+    "short_name": "En Garde",
     "description": "Fencing training tracker for the Tsui brothers",
     "start_url": "./index.html",
     "scope": "./",

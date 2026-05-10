@@ -73,7 +73,7 @@ export async function loadOrCreateProfiles(userId) {
     setState({ profiles });
 
     // restore last active profile from localStorage
-    const last = localStorage.getItem('atelier.activeProfileId');
+    const last = localStorage.getItem('en-garde.activeProfileId');
     const validLast = last && profiles.some((p) => p.id === last);
     setState({ activeProfileId: validLast ? last : (profiles[0]?.id || null) });
     applyActiveRole();
@@ -84,7 +84,7 @@ export function setActiveProfile(profileId) {
     const { profiles } = getState();
     if (!profiles.some((p) => p.id === profileId)) return;
     setState({ activeProfileId: profileId });
-    localStorage.setItem('atelier.activeProfileId', profileId);
+    localStorage.setItem('en-garde.activeProfileId', profileId);
     applyActiveRole();
 }
 

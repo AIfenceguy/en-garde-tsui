@@ -1,8 +1,8 @@
-// Atelier Tsui — minimal app-shell SW.
+// En Garde — minimal app-shell SW.
 // Caches the static shell so the app loads when wifi is bad at venues.
 // Mutations go through the in-app offline queue (lib/offline.js), not the SW.
 
-const SHELL_CACHE = 'atelier-shell-v2';
+const SHELL_CACHE = 'en-garde-shell-v2';
 const SHELL_FILES = [
     './',
     './index.html',

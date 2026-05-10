@@ -12,7 +12,7 @@ export function renderSignIn(root) {
 
     const wrap = el('div', { class: 'auth' }, [
         el('div', { class: 'auth-mark' }, [
-            el('h1', { class: 'wordmark wordmark-lg' }, ['Atelier Tsui']),
+            el('h1', { class: 'wordmark wordmark-lg' }, ['En Garde']),
             el('div', { class: 'auth-mark-sub' }, ['A family studio · foil · est. 2025'])
         ]),
         el('p', { class: 'auth-tagline' }, [

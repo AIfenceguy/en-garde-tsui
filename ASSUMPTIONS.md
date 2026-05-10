@@ -4,11 +4,11 @@ Living doc — Claude Code appends here whenever it makes a call that wasn't exp
 
 ## Confirmed up-front (May 2026)
 
-- **Repo location:** `C:\Users\ricky\atelier-tsui\` (sibling to `foiliq-pipeline`).
+- **Repo location:** `C:\Users\ricky\en-garde-tsui\` (sibling to `foiliq-pipeline`).
 - **Supabase:** new project `atelier-tsui-prod`, not a schema in `tlaps-prod`.
 - **Auth model:** single family Google account; three profiles (raedyn / kaylan / parent) FK'd to that auth user. Privacy boundary lives at UI + RLS query layer.
 - **Stack:** vanilla JS, Supabase JS client from CDN (esm.sh), no build step.
-- **Hosting:** `aifenceguy.github.io/atelier-tsui`.
+- **Hosting:** `aifenceguy.github.io/en-garde-tsui`.
 - **Auto-taper / Osgood-Schlatter:** advisory UI nudges only. Warning text says "talk to your doctor or coach," never prescribes.
 
 ## In-flight decisions (logged as Claude makes them)
@@ -92,7 +92,7 @@ Living doc — Claude Code appends here whenever it makes a call that wasn't exp
 **Decision:** Dashboard prominently features "Summer Nationals · {{N}} days" countdown when no tournament is in the user's table for the current profile, suggesting the user add it. (Information-only — clicks through to the tournaments form.)
 
 ### A20 — `git init` is local-only
-**Decision:** Claude runs `git init` and creates per-module commits locally. Pushing to GitHub (`AIfenceguy/atelier-tsui`) requires Ricky's gh auth + remote creation; README walks through it.
+**Decision:** Claude runs `git init` and creates per-module commits locally. Pushing to GitHub (`AIfenceguy/en-garde-tsui`) requires Ricky's gh auth + remote creation; README walks through it.
 
 ### A21 — Phase 1 smoke test was static, not interactive
 **Decision:** The Phase 1 build was verified by:
@@ -104,7 +104,7 @@ The headless preview tool's screenshot timed out, almost certainly because the p
 **If it bites us:** A typo I didn't catch surfaces as a runtime error on Ricky's first sign-in. Mitigate by checking the browser console immediately after first load; the static checks above should have caught structural issues but not all logic bugs.
 
 ### A22 — Bottom-nav `Lessons` route param
-**Decision:** Switching between Private and Group sub-tabs persists to `localStorage('atelier.lessonsTab')` and survives navigation. URL param `?tab=group` overrides if present.
+**Decision:** Switching between Private and Group sub-tabs persists to `localStorage('en-garde.lessonsTab')` and survives navigation. URL param `?tab=group` overrides if present.
 
 ### A23 — `tactic_taxonomy` 'add new' from bouts entry
 **Decision:** When a user adds a new failure-pattern chip from the bout entry form, it's inserted into `tactic_taxonomy` with `kind='failure'`. New scoring tactics aren't currently addable from the bout entry tally widget (the `tacticTally` widget doesn't have an 'add' affordance). Adding new scoring tactics requires future Settings UI or direct DB seed.

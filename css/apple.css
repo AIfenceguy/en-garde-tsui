@@ -1,12 +1,12 @@
 /* ============================================================
-   Atelier Tsui — Apple skin
-   Loads after atelier.css and overrides the design tokens to
+   En Garde — Apple skin
+   Loads after en-garde.css and overrides the design tokens to
    match apple.com/iphone marketing-page aesthetics.
    - Light theme primary
    - SF Pro Display + SF Pro Text (system stack)
    - Apple blue #0071e3 for primary CTAs
    - Pill buttons, big-radius cards, generous spacing, subtle shadow
-   - Italic Playfair "Atelier Tsui" wordmark stays as luxury logotype
+   - Italic Playfair "En Garde" wordmark stays as luxury logotype
    - Gold accent reserved for the sparkline + wordmark only
    ============================================================ */
 
@@ -693,7 +693,7 @@ a:hover { color: var(--cta-hi); }
 
 /* ============================================================
    FONT OVERRIDE — drop italic Playfair from data fields.
-   Keep italic Playfair ONLY for the .brand wordmark (Atelier Tsui)
+   Keep italic Playfair ONLY for the .brand wordmark (En Garde)
    and explicit .editorial-italic accents.
    ============================================================ */
 :root {
@@ -726,7 +726,7 @@ h1, h2, h3, h4, h5, h6,
     font-style: normal !important;
 }
 
-/* Keep the Atelier Tsui wordmark in italic Playfair — that's the brand */
+/* Keep the En Garde wordmark in italic Playfair — that's the brand */
 .brand,
 .wordmark,
 .wordmark-lg,

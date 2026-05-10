@@ -13,7 +13,7 @@
 
 import { supa } from './supa.js';
 
-const DB_NAME = 'atelier-tsui';
+const DB_NAME = 'en-garde-tsui';
 const DB_VERSION = 1;
 const STORE = 'queue';
 

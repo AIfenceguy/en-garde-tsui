@@ -1,4 +1,4 @@
-// Atelier Tsui — Claude coaching client
+// En Garde — Claude coaching client
 // Wraps the `claude-coach` Supabase Edge Function so the rest of the app
 // can just call `coach.boutDebrief(boutId)` etc.
 
