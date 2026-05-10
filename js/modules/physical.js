@@ -1,117 +1,84 @@
-// Module 3.4 — Physical training.
-// Differentiated daily plans (Raedyn explosive, Kaylan balanced/age-appropriate).
-// Advisory taper banner T-5 days before next tournament.
-// Advisory knee-pain nudge if knee soreness logged 3+ times in 14 days.
+// Module 3.4 — Physical training (drill library version).
+// Categorized drill picker replaces hardcoded plans.
+// Daily template (Raedyn explosive / Kaylan balanced) is now a one-tap suggestion.
 
 import { el, todayISO, fmtDate, daysUntil, toast } from '../lib/util.js';
 import { activeProfile } from '../lib/state.js';
-import { getPhysicalForDate, listPhysicalRecent, nextTournament, loadTaxonomies } from '../lib/db.js';
+import {
+    getPhysicalForDate, listPhysicalRecent, nextTournament,
+    listDrillLibrary, addDrillToLibrary
+} from '../lib/db.js';
 import { safeWrite } from '../lib/offline.js';
 import { scaleSlider } from '../lib/chips.js';
 
-const RAEDYN_PLAN = {
-    daily: [
-        { drill_slug: 'jump-squats', label: 'Jump squats', target_reps: 100, note: '4 × 25, 60s rest' }
-    ],
-    byDow: {
-        1: [
-            { drill_slug: 'broad-jumps', label: 'Broad jumps', target_reps: 20 },
-            { drill_slug: 'depth-jumps', label: 'Depth jumps', target_reps: 12 },
-            { drill_slug: 'core-circuit', label: 'Core circuit', target_reps: 1 },
-            { drill_slug: 'footwork-ladder', label: 'Footwork ladder', target_reps: 1 }
-        ],
-        2: [
-            { drill_slug: 'weapon-arm-circuit', label: 'Weapon-arm endurance', target_reps: 1 },
-            { drill_slug: 'mobility-flow', label: 'Mobility flow', target_reps: 1 }
-        ],
-        3: [
-            { drill_slug: 'single-leg-bounds', label: 'Single-leg bounds', target_reps: 16 },
-            { drill_slug: 'core-circuit', label: 'Core circuit', target_reps: 1 },
-            { drill_slug: 'footwork-ladder', label: 'Footwork ladder', target_reps: 1 }
-        ],
-        4: [
-            { drill_slug: 'sprint-intervals', label: 'Sprint intervals (10–20m × 6–8)', target_reps: 8 }
-        ],
-        5: [
-            { drill_slug: 'broad-jumps', label: 'Broad jumps', target_reps: 20 },
-            { drill_slug: 'depth-jumps', label: 'Depth jumps', target_reps: 12 },
-            { drill_slug: 'core-circuit', label: 'Core circuit', target_reps: 1 },
-            { drill_slug: 'footwork-ladder', label: 'Footwork ladder', target_reps: 1 }
-        ],
-        6: [
-            { drill_slug: 'weapon-arm-circuit', label: 'Weapon-arm endurance', target_reps: 1 },
-            { drill_slug: 'mobility-flow', label: 'Mobility flow', target_reps: 1 }
-        ],
-        0: [
-            { drill_slug: 'active-recovery', label: 'Active recovery', target_reps: 1 }
-        ]
-    }
-};
+const CATEGORIES = [
+    { slug: 'explosive',    label: 'Explosive' },
+    { slug: 'strength',     label: 'Strength' },
+    { slug: 'conditioning', label: 'Conditioning' },
+    { slug: 'mobility',     label: 'Mobility' },
+    { slug: 'footwork',     label: 'Footwork' },
+    { slug: 'core',         label: 'Core' },
+    { slug: 'recovery',     label: 'Recovery' }
+];
 
-const KAYLAN_PLAN = {
-    daily: [
-        { drill_slug: 'jump-squats', label: 'Jump squats', target_reps: 50, note: '2 × 25' },
-        { drill_slug: 'mobility-flow', label: 'Mobility (3 min)', target_reps: 1 }
-    ],
-    byDow: {
-        1: [
-            { drill_slug: 'animal-movements', label: 'Animal movements', target_reps: 1 },
-            { drill_slug: 'footwork-ladder', label: 'Footwork ladder', target_reps: 1 }
-        ],
-        2: [{ drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }],
-        3: [
-            { drill_slug: 'plank-circuit', label: 'Plank circuit', target_reps: 1 },
-            { drill_slug: 'footwork-ladder', label: 'Footwork ladder', target_reps: 1 }
-        ],
-        4: [{ drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }],
-        5: [{ drill_slug: 'animal-movements', label: 'Animal movements', target_reps: 1 }],
-        6: [{ drill_slug: 'free-play', label: 'Free play / outdoor sport', target_reps: 1 }],
-        0: [{ drill_slug: 'full-rest', label: 'Full rest day', target_reps: 1 }]
-    }
+const RAEDYN_TEMPLATE_BY_DOW = {
+    1: ['broad-jumps', 'depth-jumps', 'core-circuit', 'footwork-ladder'],
+    2: ['weapon-arm-circuit', 'mobility-flow'],
+    3: ['single-leg-bounds', 'core-circuit', 'footwork-ladder'],
+    4: ['sprint-intervals'],
+    5: ['broad-jumps', 'depth-jumps', 'core-circuit', 'footwork-ladder'],
+    6: ['weapon-arm-circuit', 'mobility-flow'],
+    0: ['active-recovery']
 };
-
-function planForToday(role, isoDate) {
-    const dow = new Date(isoDate + 'T00:00:00').getDay();
-    const tpl = role === 'raedyn' ? RAEDYN_PLAN : (role === 'kaylan' ? KAYLAN_PLAN : null);
+const KAYLAN_TEMPLATE_BY_DOW = {
+    1: ['animal-movements', 'footwork-ladder'],
+    2: ['free-play'],
+    3: ['plank-circuit', 'footwork-ladder'],
+    4: ['free-play'],
+    5: ['animal-movements'],
+    6: ['free-play'],
+    0: ['full-rest']
+};
+function templateSlugsFor(role, dow) {
+    const tpl = role === 'raedyn' ? RAEDYN_TEMPLATE_BY_DOW
+              : role === 'kaylan' ? KAYLAN_TEMPLATE_BY_DOW
+              : null;
     if (!tpl) return [];
-    return [...tpl.daily, ...((tpl.byDow[dow]) || [])];
-}
-
-function applyTaper(plan, daysToTournament) {
-    if (daysToTournament == null || daysToTournament < 0 || daysToTournament > 5) return plan;
-    return plan.map((d) => {
-        const noPlyo = ['broad-jumps', 'depth-jumps', 'single-leg-bounds', 'sprint-intervals', 'jump-squats'].includes(d.drill_slug);
-        const newTarget = noPlyo ? Math.max(1, Math.round(d.target_reps * 0.5)) : d.target_reps;
-        return { ...d, target_reps: newTarget, _tapered: noPlyo };
-    });
+    const baseDaily = role === 'raedyn' ? ['jump-squats']
+                    : role === 'kaylan' ? ['jump-squats', 'mobility-flow']
+                    : [];
+    return [...baseDaily, ...(tpl[dow] || [])];
 }
 
 export async function mountPhysical(root) {
     const profile = activeProfile();
-    if (!profile) return root.appendChild(el('div', { class: 'empty' }, [el('p', { class: 'empty-line' }, ['Pick a profile.'])]));
+    if (!profile) return root.appendChild(el('div', { class: 'empty' }, ['Pick a profile.']));
 
     const date = todayISO();
-    const [existing, recent, nextT] = await Promise.all([
-        getPhysicalForDate(date), listPhysicalRecent(14), nextTournament()
+    const [existing, recent, nextT, library] = await Promise.all([
+        getPhysicalForDate(date),
+        listPhysicalRecent(14),
+        nextTournament(),
+        listDrillLibrary()
     ]);
+
+    const libBySlug = new Map(library.map((d) => [d.slug, d]));
 
     const daysToT = nextT ? daysUntil(nextT.start_date) : null;
     const inTaper = daysToT != null && daysToT >= 0 && daysToT <= 5;
 
-    let plan = planForToday(profile.role, date);
-    plan = applyTaper(plan, daysToT);
-
-    const completed = new Map((existing?.drills_completed || []).map((d) => [d.drill_slug, d]));
-    for (const d of plan) {
-        const c = completed.get(d.drill_slug);
-        if (c) { d.actual_reps = c.actual_reps; d.done = !!c.done || (c.actual_reps >= d.target_reps); }
-        else { d.actual_reps = 0; d.done = false; }
-    }
-    for (const c of (existing?.drills_completed || [])) {
-        if (!plan.find((d) => d.drill_slug === c.drill_slug)) {
-            plan.push({ ...c, label: c.label || c.drill_slug, target_reps: c.target_reps || 0, _adhoc: true });
-        }
-    }
+    const session = (existing?.drills_completed || []).map((d) => {
+        const lib = libBySlug.get(d.drill_slug);
+        return {
+            drill_slug: d.drill_slug,
+            label: d.label || lib?.label || d.drill_slug,
+            category: d.category || lib?.category || 'other',
+            target_reps: d.target_reps ?? lib?.default_reps ?? 0,
+            sets: d.sets ?? lib?.default_sets ?? 1,
+            actual_reps: d.actual_reps || 0,
+            done: !!d.done
+        };
+    });
 
     root.appendChild(el('div', { style: { padding: '40px var(--gut) 8px' } }, [
         el('h1', { class: 'page-eyebrow' }, ['Physical']),
@@ -122,54 +89,250 @@ export async function mountPhysical(root) {
     ]));
 
     if (inTaper) {
-        root.appendChild(el('div', { class: 'card', style: { margin: '0 var(--gut) 16px', borderColor: 'var(--gold-soft)' } }, [
-            el('div', { class: 'label', style: { color: 'var(--gold-cream)' } }, [`Taper · ${daysToT === 0 ? 'today' : daysToT + ' days'} to ${nextT.name}`]),
-            el('p', { class: 'auth-tagline', style: { fontSize: '14px', margin: '8px 0 0', maxWidth: 'none' } }, ['Plyometric volume reduced ~50% as a guideline. Skip anything that feels heavy in the legs.'])
+        root.appendChild(el('div', { class: 'card', style: { margin: '0 var(--gut) 16px' } }, [
+            el('div', { class: 'label', style: { color: 'var(--gold)' } }, [`Taper · ${daysToT === 0 ? 'today' : daysToT + ' days'} to ${nextT.name}`]),
+            el('p', { style: { fontSize: '14px', margin: '8px 0 0' } }, ['Plyometric volume reduced ~50% as a guideline. Skip anything that feels heavy in the legs.'])
         ]));
     }
-
     const kneeHits = recent.filter((s) => s.injury_flag && /knee/i.test(s.soreness_location || '')).length;
     if (kneeHits >= 3) {
-        root.appendChild(el('div', { class: 'card', style: { margin: '0 var(--gut) 16px', borderColor: 'rgba(192,138,126,0.3)' } }, [
+        root.appendChild(el('div', { class: 'card', style: { margin: '0 var(--gut) 16px' } }, [
             el('div', { class: 'label', style: { color: 'var(--loss)' } }, [`Knee soreness flagged ${kneeHits}× in last 14 days`]),
-            el('p', { class: 'auth-tagline', style: { fontSize: '14px', margin: '8px 0 0', maxWidth: 'none' } }, ['When jump training overlaps with growth-plate development, rising knee pain is worth a check-in. Advisory only — talk to your coach.'])
+            el('p', { style: { fontSize: '14px', margin: '8px 0 0' } }, ['Rising knee pain during plyo work is worth a check-in. Advisory only — talk to your coach.'])
         ]));
     }
 
+    const sessionSection = el('div', { style: { padding: '0 var(--gut)' } });
     root.appendChild(el('div', { class: 'label-row' }, [
-        el('span', { class: 'label' }, [`Today's drills · ${dayName(new Date(date + 'T00:00:00').getDay())}`])
+        el('span', { class: 'label' }, ["Today's session"]),
+        el('button', {
+            type: 'button', class: 'btn btn-ghost btn-sm',
+            style: { fontSize: '12px' },
+            onclick: () => {
+                const dow = new Date(date + 'T00:00:00').getDay();
+                const slugs = templateSlugsFor(profile.role, dow);
+                let added = 0;
+                for (const slug of slugs) {
+                    if (session.find((s) => s.drill_slug === slug)) continue;
+                    const lib = libBySlug.get(slug);
+                    if (!lib) continue;
+                    session.push({
+                        drill_slug: lib.slug,
+                        label: lib.label,
+                        category: lib.category,
+                        target_reps: lib.default_reps || 0,
+                        sets: lib.default_sets || 1,
+                        actual_reps: 0,
+                        done: false
+                    });
+                    added++;
+                }
+                if (added) toast(`Loaded ${added} drill${added === 1 ? '' : 's'} from today's template`);
+                else toast('Already loaded');
+                renderSession();
+            }
+        }, ['Load today\'s template'])
     ]));
+    root.appendChild(sessionSection);
 
-    for (const d of plan) {
+    function renderSession() {
+        sessionSection.innerHTML = '';
+        if (!session.length) {
+            sessionSection.appendChild(el('p', {
+                style: { color: 'var(--ink-mute)', fontStyle: 'italic', padding: '12px 0' }
+            }, ['No drills yet. Pick a category below to add some.']));
+            return;
+        }
+        for (const d of session) {
+            sessionSection.appendChild(buildSessionRow(d));
+        }
+    }
+
+    function buildSessionRow(d) {
+        const idx = session.indexOf(d);
         const repsInput = el('input', {
             type: 'number', min: 0, value: d.actual_reps || 0,
-            'aria-label': `actual reps for ${d.label}`,
             class: 'field-input field-numeric',
-            style: { textAlign: 'right', maxWidth: '60px' },
-            onchange: (e) => { d.actual_reps = Number(e.target.value) || 0; d.done = d.actual_reps >= d.target_reps; rerow(); }
+            style: { textAlign: 'right', maxWidth: '72px' },
+            onchange: (e) => {
+                d.actual_reps = Number(e.target.value) || 0;
+                d.done = d.actual_reps >= d.target_reps && d.target_reps > 0;
+                row.classList.toggle('is-done', d.done);
+            }
         });
-        const row = el('div', { class: 'drill' + (d.done ? ' is-done' : '') }, [
+        const setsInput = el('input', {
+            type: 'number', min: 0, value: d.sets || 1,
+            class: 'field-input field-numeric',
+            style: { textAlign: 'right', maxWidth: '52px' },
+            onchange: (e) => { d.sets = Number(e.target.value) || 1; }
+        });
+        const row = el('div', {
+            class: 'drill' + (d.done ? ' is-done' : ''),
+            style: {
+                display: 'flex', alignItems: 'center', gap: '12px',
+                padding: '14px 0', borderBottom: '1px solid var(--rule)'
+            }
+        }, [
             el('button', {
-                type: 'button', class: 'drill-check',
-                onclick: () => { d.done = !d.done; if (d.done && (!d.actual_reps || d.actual_reps < d.target_reps)) { d.actual_reps = d.target_reps; repsInput.value = d.target_reps; } rerow(); }
-            }, [
-                el('svg', { width: '12', height: '12', viewBox: '0 0 12 12', fill: 'none' }, [
-                    el('path', { d: 'M2 6 L5 9 L10 3', stroke: '#15140f', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+                type: 'button',
+                style: {
+                    width: '24px', height: '24px', borderRadius: '6px',
+                    border: '1.5px solid var(--rule-strong)',
+                    background: d.done ? 'var(--cta, #0071e3)' : 'transparent',
+                    color: d.done ? '#fff' : 'transparent',
+                    cursor: 'pointer', flexShrink: 0
+                },
+                onclick: () => {
+                    d.done = !d.done;
+                    if (d.done && (!d.actual_reps || d.actual_reps < d.target_reps)) {
+                        d.actual_reps = d.target_reps;
+                        repsInput.value = d.target_reps;
+                    }
+                    renderSession();
+                }
+            }, [d.done ? '✓' : '']),
+            el('div', { style: { flex: '1 1 auto', minWidth: 0 } }, [
+                el('div', { style: { fontWeight: 500, fontSize: '15px' } }, [d.label]),
+                el('div', {
+                    style: { fontSize: '11px', color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '0.04em' }
+                }, [
+                    d.category,
+                    d.target_reps ? ` · target ${d.target_reps}` : '',
+                    d.sets > 1 ? ` × ${d.sets}` : ''
                 ])
             ]),
-            el('div', { class: 'drill-body' }, [
-                el('div', { class: 'drill-name' }, [
-                    d.label,
-                    d._tapered ? el('span', { class: 'label', style: { marginLeft: '8px', color: 'var(--gold-cream)' } }, ['TAPERED']) : null,
-                    d._adhoc ? el('span', { class: 'label', style: { marginLeft: '8px' } }, ['AD-HOC']) : null
-                ]),
-                d.note ? el('div', { class: 'drill-meta' }, [d.note]) : null
+            el('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '11px', color: 'var(--ink-mute)' } }, [
+                el('span', {}, ['reps']),
+                repsInput,
+                el('span', {}, ['sets']),
+                setsInput
             ]),
-            repsInput
+            el('button', {
+                type: 'button',
+                style: {
+                    border: 'none', background: 'transparent', color: 'var(--loss)',
+                    cursor: 'pointer', fontSize: '18px', padding: '4px 8px'
+                },
+                onclick: () => { session.splice(idx, 1); renderSession(); }
+            }, ['×'])
         ]);
-        root.appendChild(row);
-        function rerow() { row.classList.toggle('is-done', !!d.done); }
+        return row;
     }
+
+    renderSession();
+
+    root.appendChild(el('div', { class: 'label-row', style: { marginTop: '32px' } }, [
+        el('span', { class: 'label' }, ['Add a drill'])
+    ]));
+
+    let activeCat = CATEGORIES[0].slug;
+
+    const catRow = el('div', { class: 'chip-row', style: { padding: '0 var(--gut) 8px', flexWrap: 'wrap' } });
+    function renderCatRow() {
+        catRow.innerHTML = '';
+        for (const c of CATEGORIES) {
+            catRow.appendChild(el('button', {
+                type: 'button',
+                class: 'chip' + (c.slug === activeCat ? ' active selected' : ''),
+                onclick: () => { activeCat = c.slug; renderCatRow(); renderDrillList(); }
+            }, [c.label]));
+        }
+    }
+    root.appendChild(catRow);
+    renderCatRow();
+
+    const drillList = el('div', { style: { padding: '4px var(--gut) 16px' } });
+    root.appendChild(drillList);
+
+    function renderDrillList() {
+        drillList.innerHTML = '';
+        const drills = library.filter((d) => d.category === activeCat);
+        if (!drills.length) {
+            drillList.appendChild(el('p', { style: { color: 'var(--ink-mute)', fontStyle: 'italic' } }, ['No drills in this category yet.']));
+        }
+        for (const d of drills) {
+            const inSession = session.find((s) => s.drill_slug === d.slug);
+            drillList.appendChild(el('div', {
+                style: {
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 0', borderBottom: '1px solid var(--rule)'
+                }
+            }, [
+                el('div', { style: { flex: '1 1 auto', minWidth: 0 } }, [
+                    el('div', { style: { fontWeight: 500, fontSize: '15px' } }, [d.label]),
+                    el('div', {
+                        style: { fontSize: '12px', color: 'var(--ink-mute)', marginTop: '2px' }
+                    }, [d.notes || `${d.default_reps || ''} reps${d.default_sets > 1 ? ' × ' + d.default_sets + ' sets' : ''}`])
+                ]),
+                el('button', {
+                    type: 'button',
+                    class: inSession ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm',
+                    style: { fontSize: '12px', padding: '6px 14px' },
+                    disabled: !!inSession,
+                    onclick: () => {
+                        if (inSession) return;
+                        session.push({
+                            drill_slug: d.slug,
+                            label: d.label,
+                            category: d.category,
+                            target_reps: d.default_reps || 0,
+                            sets: d.default_sets || 1,
+                            actual_reps: 0,
+                            done: false
+                        });
+                        renderSession();
+                        renderDrillList();
+                    }
+                }, [inSession ? 'Added' : '+ Add'])
+            ]));
+        }
+
+        const newForm = el('div', { style: { marginTop: '14px', padding: '14px', background: 'var(--surface-2)', borderRadius: '12px' } });
+        const newLabel = el('input', { type: 'text', class: 'field-input', placeholder: 'New drill name', style: { width: '100%', marginBottom: '8px' } });
+        const newReps = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: 'reps', min: 0, style: { maxWidth: '90px' } });
+        const newSets = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: 'sets', min: 1, value: 1, style: { maxWidth: '70px' } });
+        const newNotes = el('input', { type: 'text', class: 'field-input', placeholder: 'note (optional)', style: { flex: 1 } });
+        newForm.appendChild(el('div', { style: { fontSize: '12px', color: 'var(--ink-mute)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' } }, [`New drill — ${CATEGORIES.find((c) => c.slug === activeCat)?.label}`]));
+        newForm.appendChild(newLabel);
+        newForm.appendChild(el('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' } }, [
+            newReps, newSets, newNotes,
+            el('button', {
+                type: 'button', class: 'btn btn-primary btn-sm', style: { fontSize: '12px' },
+                onclick: async () => {
+                    const label = newLabel.value.trim();
+                    if (!label) { toast('Drill name required', 'error'); return; }
+                    try {
+                        const created = await addDrillToLibrary({
+                            category: activeCat,
+                            label,
+                            default_reps: Number(newReps.value) || 0,
+                            default_sets: Number(newSets.value) || 1,
+                            default_rest_s: null,
+                            notes: newNotes.value.trim() || null
+                        });
+                        library.push(created);
+                        libBySlug.set(created.slug, created);
+                        session.push({
+                            drill_slug: created.slug,
+                            label: created.label,
+                            category: created.category,
+                            target_reps: created.default_reps || 0,
+                            sets: created.default_sets || 1,
+                            actual_reps: 0,
+                            done: false
+                        });
+                        toast(`Added "${created.label}" to library`);
+                        renderSession();
+                        renderDrillList();
+                    } catch (e) {
+                        toast('Could not add: ' + e.message, 'error');
+                    }
+                }
+            }, ['Save'])
+        ]));
+        drillList.appendChild(newForm);
+    }
+    renderDrillList();
 
     const energy = scaleSlider({ value: existing?.energy_1_10 ?? 7 });
     const sore = scaleSlider({ value: existing?.soreness_severity ?? 0, min: 0 });
@@ -196,7 +359,11 @@ export async function mountPhysical(root) {
     ]));
 
     root.appendChild(el('div', { style: { padding: '20px var(--gut) 16px' } }, [
-        el('button', { class: 'btn btn-primary btn-mono-label btn-block', onclick: save }, ['Save today'])
+        el('button', {
+            class: 'btn btn-primary btn-mono-label',
+            style: { width: '100%' },
+            onclick: save
+        }, ['Save today'])
     ]));
 
     if (recent.length) {
@@ -205,19 +372,28 @@ export async function mountPhysical(root) {
             el('span', { class: 'label', style: { color: 'var(--ink-faint)' } }, [`${recent.length} SESSION${recent.length === 1 ? '' : 'S'}`])
         ]));
         root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut) 24px' } }, recent.map((s) =>
-            el('span', { class: 'chip ' + (s.injury_flag ? '' : 'is-on'), style: s.injury_flag ? { color: 'var(--loss)', borderColor: 'rgba(192,138,126,0.3)' } : {} }, [
+            el('span', {
+                class: 'chip ' + (s.injury_flag ? '' : 'is-on'),
+                style: s.injury_flag ? { color: 'var(--loss)' } : {}
+            }, [
                 fmtDate(s.date), ' · ', `${(s.drills_completed || []).length} drill${(s.drills_completed || []).length === 1 ? '' : 's'}`
             ])
         )));
     }
 
     async function save() {
-        const drillsCompleted = plan.map((d) => ({
-            drill_slug: d.drill_slug, label: d.label, target_reps: d.target_reps,
-            actual_reps: d.actual_reps || 0, done: !!d.done
+        const drillsCompleted = session.map((d) => ({
+            drill_slug: d.drill_slug,
+            label: d.label,
+            category: d.category,
+            target_reps: d.target_reps,
+            sets: d.sets,
+            actual_reps: d.actual_reps || 0,
+            done: !!d.done
         }));
         const payload = {
-            profile_id: profile.id, date,
+            profile_id: profile.id,
+            date,
             drills_completed: drillsCompleted,
             energy_1_10: energy.getValue(),
             soreness_location: soreLoc.value.trim() || null,
@@ -231,8 +407,4 @@ export async function mountPhysical(root) {
             toast('Saved' + (navigator.onLine ? '' : ' (offline — will sync)'));
         } catch (e) { toast('Save failed: ' + e.message, 'error'); }
     }
-}
-
-function dayName(dow) {
-    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow];
 }
