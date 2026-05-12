@@ -139,6 +139,7 @@ export function paceProjection(ability, recentDailyXp, targetLevel, daysRemainin
     const onTrackThreshold = xpPerDay;
     let status;
     if (ability.totalXp >= targetLevel * 100) status = 'done';
+    else if (ability.totalXp === 0)            status = 'not_started';
     else if (recentDailyXp >= xpPerDay)        status = 'on_track';
     else if (recentDailyXp >= xpPerDay * 0.5)  status = 'close';
     else                                       status = 'behind';
@@ -174,8 +175,10 @@ export function recentDailyXp(data, days = 7) {
     return { strike, guard, engine, mind };
 }
 
-export const TARGET_LEVEL = 100;
+export const TARGET_LEVEL = 100;  // legacy fallback
+export const TARGET_LEVELS = { strike: 30, guard: 30, engine: 100, mind: 40 };
 export const SUMMER_NATIONALS_DATE = '2026-07-01';
+export function targetLevelFor(abilityKey) { return TARGET_LEVELS[abilityKey] || TARGET_LEVEL; }
 
 export function daysUntil(isoDate) {
     const target = new Date(isoDate + 'T00:00:00');

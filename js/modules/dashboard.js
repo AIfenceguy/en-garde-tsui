@@ -4,7 +4,7 @@
 
 import { el, todayISO, fmtDate, fmtDateLong, daysUntil, toast } from '../lib/util.js';
 import { activeProfile } from '../lib/state.js';
-import { computeAbilities, recentDailyXp, paceProjection, ABILITIES, ABILITY_META, TARGET_LEVEL, SUMMER_NATIONALS_DATE, daysUntil as daysUntilLevels } from '../lib/levels.js';
+import { computeAbilities, recentDailyXp, paceProjection, ABILITIES, ABILITY_META, targetLevelFor, SUMMER_NATIONALS_DATE, daysUntil as daysUntilLevels } from '../lib/levels.js';
 import {
     nextTournament, getPhysicalForDate, getMentalForDate,
     listBouts, listOpponents, listAllProfiles, fetchXpInputs
@@ -334,7 +334,7 @@ async function buildLevelDashboard() {
         const card = el('div', { class: 'level-card', style: { borderTop: `3px solid ${kid.accent_hex || '#888'}` } }, [
             el('div', { class: 'level-card-head' }, [
                 el('span', { class: 'level-name' }, [kid.name]),
-                el('span', { class: 'level-tagline' }, ['Lv 100 by Jul 1'])
+                el('span', { class: 'level-tagline' }, ['target by Jul 1'])
             ])
         ]);
         for (const k of ABILITIES) {
@@ -349,16 +349,19 @@ async function buildLevelDashboard() {
 
 function abilityRow(key, ability, dailyXp, days) {
     const meta = ABILITY_META[key];
-    const pace = paceProjection(ability, dailyXp || 0, TARGET_LEVEL, days);
+    const target = targetLevelFor(key);
+    const pace = paceProjection(ability, dailyXp || 0, target, days);
     const paceIcon =
-        pace.status === 'done'     ? '🏆' :
-        pace.status === 'on_track' ? '🟢' :
-        pace.status === 'close'    ? '🟡' : '🔴';
+        pace.status === 'done'        ? '🏆' :
+        pace.status === 'not_started' ? '🚀' :
+        pace.status === 'on_track'    ? '🟢' :
+        pace.status === 'close'       ? '🟡' : '🔴';
     const paceText =
-        pace.status === 'done'     ? `MAX · ${ability.totalXp.toLocaleString()} XP` :
-        pace.status === 'on_track' ? `on pace · ~${Math.round(dailyXp)} XP/day` :
-        pace.status === 'close'    ? `close · need ${pace.xpPerDayNeeded}/day` :
-                                     `behind · need ${pace.xpPerDayNeeded}/day`;
+        pace.status === 'done'        ? `MAX · target Lv ${target}` :
+        pace.status === 'not_started' ? `Get started! target Lv ${target}` :
+        pace.status === 'on_track'    ? `on pace · ~${Math.round(dailyXp)} XP/day` :
+        pace.status === 'close'       ? `close · ${pace.xpPerDayNeeded}/day to Lv ${target}` :
+                                        `${pace.xpPerDayNeeded}/day to Lv ${target}`;
     return el('div', { class: `ability-row tier-${ability.rank.tier}` }, [
         el('div', { class: 'ability-head' }, [
             el('span', { class: 'ability-icon' }, [meta.icon]),
