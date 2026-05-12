@@ -33,6 +33,19 @@ export async function signInWithMagicLink(email) {
     if (error) throw error;
 }
 
+export async function signInWithPassword(email, password) {
+    const { data, error } = await supa.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data;
+}
+
+export async function setPassword(password) {
+    const { data, error } = await supa.auth.updateUser({ password });
+    if (error) throw error;
+    return data;
+}
+
+
 export async function signOut() {
     await supa.auth.signOut();
     setState({ session: null, profiles: [], activeProfileId: null });

@@ -1,7 +1,7 @@
 // Sign-in view (shown when no session) and the topbar countdown updater.
 
 import { el } from '../lib/util.js';
-import { signInWithGoogle, signInWithMagicLink } from '../lib/auth.js';
+import { signInWithGoogle, signInWithMagicLink, signInWithPassword } from '../lib/auth.js';
 import { isConfigured } from '../lib/supa.js';
 import { nextTournament } from '../lib/db.js';
 import { daysUntil, fmtDate } from '../lib/util.js';
@@ -30,7 +30,7 @@ export function renderSignIn(root) {
             : null,
         el('div', { class: 'auth-form' }, [
             el('div', { class: 'label-row' }, [
-                el('span', { class: 'label' }, ['Sign in by email'])
+                el('span', { class: 'label' }, ['Sign in'])
             ]),
             el('div', { class: 'field' }, [
                 el('label', { class: 'field-label' }, ['Email']),
@@ -41,15 +41,48 @@ export function renderSignIn(root) {
                     placeholder: 'you@studio',
                     autocomplete: 'email',
                     autocapitalize: 'off',
-                    spellcheck: 'false'
+                    spellcheck: 'false',
+                    value: localStorage.getItem('en-garde.lastEmail') || ''
+                })
+            ]),
+            el('div', { class: 'field' }, [
+                el('label', { class: 'field-label' }, ['Password']),
+                el('input', {
+                    type: 'password',
+                    id: 'pw-input',
+                    class: 'field-input',
+                    placeholder: '••••••••',
+                    autocomplete: 'current-password'
                 })
             ]),
             el('button', {
                 class: 'btn btn-primary btn-block btn-mono-label',
                 style: { marginTop: '20px' },
                 onclick: async (e) => {
+                    const email = document.getElementById('magic-email').value.trim();
+                    const pw = document.getElementById('pw-input').value;
+                    if (!email || !pw) { alert('Email and password required'); return; }
+                    const btn = e.currentTarget;
+                    const orig = btn.textContent;
+                    btn.disabled = true;
+                    btn.textContent = 'Signing in…';
+                    try {
+                        await signInWithPassword(email, pw);
+                        localStorage.setItem('en-garde.lastEmail', email);
+                        location.reload();
+                    } catch (err) {
+                        btn.textContent = orig;
+                        btn.disabled = false;
+                        alert('Sign-in failed: ' + err.message);
+                    }
+                }
+            }, ['Sign in']),
+            el('div', { class: 'auth-divider' }, ['or']),
+            el('button', {
+                class: 'btn btn-ghost btn-block btn-mono-label',
+                onclick: async (e) => {
                     const v = document.getElementById('magic-email').value.trim();
-                    if (!v) return;
+                    if (!v) { alert('Enter email first'); return; }
                     const btn = e.currentTarget;
                     const orig = btn.textContent;
                     btn.disabled = true;
@@ -57,10 +90,6 @@ export function renderSignIn(root) {
                     try {
                         await signInWithMagicLink(v);
                         btn.textContent = 'Check your inbox';
-                        const sent = el('p', { class: 'auth-tagline', style: { marginTop: '14px', textAlign: 'center' } }, [
-                            'Check ', el('em', {}, [v]), ' for a link. It opens the studio.'
-                        ]);
-                        btn.parentElement.appendChild(sent);
                     } catch (err) {
                         btn.textContent = orig;
                         btn.disabled = false;
