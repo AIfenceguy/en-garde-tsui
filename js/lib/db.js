@@ -241,3 +241,34 @@ export async function addDrillToLibrary({ category, label, default_reps, default
     if (error) throw error;
     return data;
 }
+
+// =====================================================
+// XP inputs — bulk fetch for the level dashboard
+// Returns ALL data for a specific profile (not just current active)
+// =====================================================
+
+export async function fetchXpInputs(profileId) {
+    if (!profileId) return null;
+    const [bouts, physical, mental, lessons_pvt, lessons_grp, swots] = await Promise.all([
+        supa.from('bouts').select('id, date, my_score, their_score, outcome, reflection').eq('profile_id', profileId),
+        supa.from('physical_sessions').select('date, drills_completed, energy_1_10, soreness_severity, sleep_hours').eq('profile_id', profileId),
+        supa.from('mental_sessions').select('date, meditation_duration_min, scenarios_rehearsed').eq('profile_id', profileId),
+        supa.from('private_lessons').select('date, topics').eq('profile_id', profileId),
+        supa.from('group_lessons').select('date, topics').eq('profile_id', profileId),
+        supa.from('opponent_swots').select('strengths, weaknesses, opportunities, threats').eq('profile_id', profileId)
+    ]);
+    return {
+        bouts: bouts.data || [],
+        physical_sessions: physical.data || [],
+        mental_sessions: mental.data || [],
+        private_lessons: lessons_pvt.data || [],
+        group_lessons: lessons_grp.data || [],
+        opponent_swots: swots.data || []
+    };
+}
+
+export async function listAllProfiles() {
+    const { data, error } = await supa.from('profiles').select('id, name, role, accent_hex').order('role');
+    if (error) throw error;
+    return data || [];
+}

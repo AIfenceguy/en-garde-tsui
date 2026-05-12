@@ -432,11 +432,33 @@ export async function mountBoutDetail(root, params) {
         el('button', {
             class: 'btn btn-ghost btn-mono-label',
             style: { color: 'var(--loss)', borderColor: 'rgba(192,138,126,0.3)' },
-            onclick: async () => {
-                if (!confirm('Delete this bout?')) return;
-                await safeWrite({ table: 'bouts', op: 'delete', payload: {}, match: { id: b.id } });
-                toast('Deleted');
-                go('bouts');
+            onclick: async (e) => {
+                const btn = e.currentTarget;
+                if (btn.dataset.confirming !== '1') {
+                    const orig = btn.textContent;
+                    btn.dataset.origText = orig;
+                    btn.dataset.confirming = '1';
+                    btn.textContent = 'Confirm delete?';
+                    setTimeout(() => {
+                        if (btn.dataset.confirming === '1') {
+                            btn.textContent = btn.dataset.origText || 'Delete';
+                            btn.dataset.confirming = '';
+                        }
+                    }, 4000);
+                    return;
+                }
+                btn.disabled = true;
+                btn.textContent = 'Deleting…';
+                try {
+                    await safeWrite({ table: 'bouts', op: 'delete', payload: {}, match: { id: b.id } });
+                    toast('Deleted');
+                    go('bouts');
+                } catch (err) {
+                    btn.disabled = false;
+                    btn.dataset.confirming = '';
+                    btn.textContent = btn.dataset.origText || 'Delete';
+                    toast('Delete failed: ' + (err?.message || 'unknown'));
+                }
             }
         }, ['Delete'])
     ]));
