@@ -4,7 +4,7 @@
 
 import { el, todayISO, fmtDate, fmtDateLong, daysUntil, toast } from '../lib/util.js';
 import { activeProfile } from '../lib/state.js';
-import { computeAbilities, recentDailyXp, paceProjection, ABILITIES, ABILITY_META, targetLevelFor, SUMMER_NATIONALS_DATE, daysUntil as daysUntilLevels } from '../lib/levels.js';
+import { computeAbilities, recentDailyXp, paceProjection, ABILITIES, ABILITY_META, targetLevelFor, SUMMER_NATIONALS_DATE, daysUntil as daysUntilLevels, computeStreak } from '../lib/levels.js';
 import { generateCoachTips } from '../lib/coach-ai.js';
 import {
     nextTournament, getPhysicalForDate, getMentalForDate,
@@ -41,13 +41,19 @@ export async function mountDashboard(root) {
             d === 0 ? 'today' : (d === 1 ? '1 day' : `${d} days`)
         ]));
     }
+    // Active profile streak — small badge for the hero
+    let activeStreak = 0;
+    try { const myInputs = await fetchXpInputs(profile.id); activeStreak = computeStreak(myInputs).streak; } catch(e){}
+    const heroBitsWithStreak = [...heroSubBits];
+    if (activeStreak > 0) heroBitsWithStreak.unshift(el('span', { class: 'hero-streak' }, ['🔥 ', String(activeStreak), '-day streak']));
+
     root.appendChild(el('div', { class: 'today-hero stagger' }, [
         el('h1', { class: 'today-greeting' }, [
             greeting(), ', ',
             el('span', { class: 'accent' }, [profile.name]),
             '.'
         ]),
-        el('div', { class: 'today-sub' }, heroSubBits)
+        el('div', { class: 'today-sub' }, heroBitsWithStreak)
     ]));
 
     // Status metrics (Body / Mind) — two-column metric grid
@@ -338,10 +344,17 @@ async function buildLevelDashboard() {
     kids.forEach((kid, i) => {
         const abilities = abilitiesByKid[i];
         const recent = recentByKid[i];
-        const card = el('div', { class: 'level-card', style: { borderTop: `3px solid ${kid.accent_hex || '#888'}` } }, [
+        const streak = computeStreak(inputsByKid[i]);
+        const avatarEmoji = kid.role === 'raedyn' ? '⚔️' : (kid.role === 'kaylan' ? '🦅' : '👤');
+        const card = el('div', { class: 'level-card', style: { borderTop: `4px solid ${kid.accent_hex || '#888'}` } }, [
             el('div', { class: 'level-card-head' }, [
-                el('span', { class: 'level-name' }, [kid.name]),
-                el('span', { class: 'level-tagline' }, ['🎯 hit max by Jul 1'])
+                el('div', { class: 'avatar-tile', style: { background: kid.accent_hex || '#888' } }, [avatarEmoji]),
+                el('div', { class: 'level-card-titles' }, [
+                    el('div', { class: 'level-name' }, [kid.name]),
+                    el('div', { class: 'level-meta' }, [
+                        el('span', { class: 'streak-pill', title: 'Days logged in a row' }, ['🔥 ', String(streak.streak), 'd streak'])
+                    ])
+                ])
             ])
         ]);
         for (const k of ABILITIES) {
@@ -369,13 +382,17 @@ function abilityRow(key, ability, dailyXp, days) {
         pace.status === 'on_track'    ? `LEVELING UP! ~${Math.round(dailyXp)} XP/day` :
         pace.status === 'close'       ? `Almost there · ${pace.xpPerDayNeeded}/day to Lv ${target}` :
                                         `Push it! ${pace.xpPerDayNeeded}/day to Lv ${target}`;
-    return el('div', { class: `ability-row tier-${ability.rank.tier}` }, [
+    return el('div', { class: `ability-row tier-${ability.rank.tier} ${key}`, 'data-ability': key }, [
         el('div', { class: 'ability-head' }, [
-            el('span', { class: 'ability-icon' }, [meta.icon]),
-            el('span', { class: 'ability-label' }, [meta.label.toUpperCase()]),
-            el('span', { class: 'ability-level', style: { color: ability.rank.color } }, [
-                'Lv ', String(ability.level)
-            ])
+            el('span', { class: 'level-badge' }, [
+                el('span', { class: 'level-lv' }, ['LV']),
+                el('span', { class: 'level-num' }, [String(ability.level)])
+            ]),
+            el('div', { class: 'ability-icon-name' }, [
+                el('span', { class: 'ability-icon' }, [meta.icon]),
+                el('span', { class: 'ability-label' }, [meta.label.toUpperCase()])
+            ]),
+            el('span', { class: 'ability-pace-icon', style: { fontSize: '16px' } }, [paceIcon])
         ]),
         el('div', { class: 'ability-bar' }, [
             el('div', {
@@ -387,7 +404,7 @@ function abilityRow(key, ability, dailyXp, days) {
             el('span', { class: 'ability-xp' }, [
                 String(ability.xpToNext), ' / 100 XP'
             ]),
-            el('span', { class: 'ability-pace' }, [paceIcon + ' ' + paceText])
+            el('span', { class: 'ability-pace' }, [paceText])
         ])
     ]);
 }

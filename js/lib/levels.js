@@ -185,3 +185,25 @@ export function daysUntil(isoDate) {
     const now = new Date();
     return Math.max(0, Math.ceil((target - now) / 86400000));
 }
+
+// =====================================================
+// Daily streak — count consecutive days back from today with ANY logged data
+// =====================================================
+export function computeStreak(data) {
+    const days = new Set();
+    for (const b of (data.bouts || []))             if (b.date) days.add(b.date);
+    for (const s of (data.physical_sessions || [])) if (s.date) days.add(s.date);
+    for (const s of (data.mental_sessions || []))   if (s.date) days.add(s.date);
+    for (const l of (data.private_lessons || []))   if (l.date) days.add(l.date);
+    for (const l of (data.group_lessons || []))     if (l.date) days.add(l.date);
+
+    let streak = 0;
+    const d = new Date();
+    for (let i = 0; i < 365; i++) {
+        const iso = d.toISOString().slice(0, 10);
+        if (days.has(iso)) { streak++; d.setDate(d.getDate() - 1); }
+        else if (i === 0) { d.setDate(d.getDate() - 1); }  // today is OK to skip
+        else break;
+    }
+    return { streak, totalLoggedDays: days.size };
+}

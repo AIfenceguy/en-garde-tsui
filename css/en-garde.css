@@ -1,3 +1,73 @@
+/* =====================================================
+   ROBLOX REDESIGN — Design Tokens (Phase 1)
+   ===================================================== */
+:root {
+    /* Color palette */
+    --eg-primary: #2B6BFF;
+    --eg-accent-gold: #F5B400;
+    --eg-surface-cream: #FAF7F2;
+    --eg-surface-card: #FFFFFF;
+    --eg-ink: #1A1D24;
+    --eg-ink-muted: #6B7280;
+    --eg-success: #22C55E;
+    --eg-danger: #E63946;
+    --eg-rule: #E5E7EB;
+
+    /* Ability colors */
+    --eg-strike: #E63946;
+    --eg-guard:  #2B6BFF;
+    --eg-engine: #F5B400;
+    --eg-mind:   #8B5CF6;
+
+    /* Type stacks */
+    --eg-display: 'Fredoka', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --eg-ui: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --eg-serif: 'Cormorant Garamond', Georgia, serif;
+    --eg-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+    background: var(--eg-surface-cream);
+    font-family: var(--eg-ui);
+    color: var(--eg-ink);
+}
+
+/* Global display heading rule — anything that was Cormorant or Playfair is now Fredoka,
+   EXCEPT specifically annotated "voice" surfaces below. */
+h1, h2, h3, h4, .display, .level-name, .greeting, .ability-level, .quest-title {
+    font-family: var(--eg-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+/* "Voice" surfaces — keep Cormorant italic for serious-journal feel */
+.coach-quote,
+.coach-quote *,
+.reflection-input,
+textarea.reflection-input,
+.italic-prose,
+.style-profile textarea,
+.coach-tip blockquote,
+.today-greeting,
+.brand,
+.auth-tagline,
+.empty-line,
+.metric-foot {
+    font-family: var(--eg-serif);
+}
+
+/* Buttons, chips, labels — chunky Inter */
+button, .btn, .chip, .nav-label, .label, .metric-label {
+    font-family: var(--eg-ui);
+}
+.label, .metric-label {
+    letter-spacing: 0.10em;
+}
+
+/* Tabular numerals for scores + level numbers */
+.ability-level, .ability-xp, .level-num, .score-pill, .countdown .num {
+    font-variant-numeric: tabular-nums;
+}
 /* ============================================================
    En Garde — design tokens & global styles
    Editorial, dark, gold-accented. A fencer's notebook.
@@ -572,4 +642,348 @@ html { background: #08070a !important; }
 .ability-level {
     font-size: 14px !important;
     text-shadow: 0 0 4px rgba(0,0,0,0.1);
+}
+
+/* =====================================================
+   ROBLOX REDESIGN — Chunky XP bars + Level badges
+   ===================================================== */
+
+/* Update ability colors to use new variables */
+.ability-row.strike, .ability-row[data-ability=strike] { --bar-color: var(--eg-strike); }
+.ability-row.guard,  .ability-row[data-ability=guard]  { --bar-color: var(--eg-guard); }
+.ability-row.engine, .ability-row[data-ability=engine] { --bar-color: var(--eg-engine); }
+.ability-row.mind,   .ability-row[data-ability=mind]   { --bar-color: var(--eg-mind); }
+
+/* Ability row layout — give it more breathing room */
+.ability-row {
+    padding: 12px 0 14px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+.ability-head {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+/* Circular level badge — the headline element */
+.level-badge {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    background: var(--bar-color, var(--eg-engine));
+    color: #fff;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--eg-display);
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.18), inset 0 -2px 0 rgba(0,0,0,0.12);
+    position: relative;
+    flex-shrink: 0;
+}
+.level-badge .level-num {
+    font-size: 16px;
+    margin-top: -1px;
+}
+.level-badge .level-lv {
+    font-size: 8px;
+    opacity: 0.85;
+    letter-spacing: 0.08em;
+    margin-bottom: 1px;
+}
+
+/* Ability emoji + name take the remaining space */
+.ability-icon-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ability-icon {
+    font-size: 18px;
+}
+.ability-label {
+    font-family: var(--eg-ui);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--eg-ink);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+/* Hide the old inline ability-level span — replaced by the badge */
+.ability-row .ability-level-old { display: none; }
+
+/* The chunky XP bar */
+.ability-bar {
+    background: rgba(0,0,0,0.06);
+    border-radius: 999px;
+    height: 12px !important;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.08);
+}
+.ability-fill {
+    height: 100% !important;
+    border-radius: 999px;
+    background: var(--bar-color, var(--eg-engine)) !important;
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.15);
+    transition: width 0.6s cubic-bezier(.34,1.56,.64,1);  /* bouncy ease */
+    position: relative;
+}
+/* Subtle inner highlight for "polished plastic" feel */
+.ability-fill::after {
+    content: '';
+    position: absolute;
+    top: 1px; left: 4px; right: 4px;
+    height: 3px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0));
+    border-radius: 999px;
+}
+
+/* Gold + platinum shimmer keeps from previous, but stronger */
+.tier-gold .ability-fill, .tier-platinum .ability-fill {
+    background: linear-gradient(90deg, currentColor, #fff5d0, currentColor) !important;
+}
+
+.ability-foot {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-family: var(--eg-mono);
+    font-size: 11px;
+    color: var(--eg-ink-muted);
+}
+.ability-xp {
+    font-weight: 600;
+}
+.ability-pace {
+    font-weight: 600;
+}
+
+/* =====================================================
+   ROBLOX REDESIGN — Beefier Quest Cards
+   ===================================================== */
+.coach-tip {
+    background: var(--eg-surface-card);
+    border-radius: 16px;
+    padding: 18px 20px 18px 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+    border-left: 6px solid var(--eg-primary);
+    transition: transform 0.18s cubic-bezier(.34,1.56,.64,1), box-shadow 0.18s ease;
+    position: relative;
+    cursor: pointer;
+}
+.coach-tip:hover, .coach-tip:focus-within {
+    transform: translateY(-3px) scale(1.005);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
+}
+.coach-tip:active {
+    transform: translateY(-1px) scale(1.002);
+}
+
+/* Quest type colors */
+.coach-tip-p1 {
+    border-left-color: var(--eg-accent-gold) !important;
+    background: linear-gradient(135deg, #fff, #fffaeb 100%) !important;
+}
+.coach-tip-p2 {
+    border-left-color: var(--eg-danger) !important;
+    background: linear-gradient(135deg, #fff, #fff0f0 100%) !important;
+}
+.coach-tip-p3 {
+    border-left-color: var(--eg-guard) !important;
+    background: linear-gradient(135deg, #fff, #eef4ff 100%) !important;
+}
+
+/* Quest label (the #1 · MAIN QUEST line) */
+.coach-tip-label {
+    font-family: var(--eg-ui);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--eg-accent-gold);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+.coach-tip-p2 .coach-tip-label { color: var(--eg-danger); }
+.coach-tip-p3 .coach-tip-label { color: var(--eg-guard); }
+
+/* Quest title — chunky Fredoka */
+.coach-tip-title {
+    font-family: var(--eg-display) !important;
+    font-style: normal !important;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--eg-ink);
+    margin-bottom: 6px;
+    line-height: 1.15;
+}
+
+.coach-tip-meta {
+    font-family: var(--eg-ui);
+    font-size: 13px;
+    color: var(--eg-ink-muted);
+    margin-bottom: 6px;
+}
+
+.coach-quote {
+    margin: 10px 0;
+    padding: 10px 14px;
+    border-left: 3px solid var(--eg-rule);
+    background: rgba(0,0,0,0.02);
+    border-radius: 0 8px 8px 0;
+    font-family: var(--eg-serif) !important;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--eg-ink);
+}
+
+.coach-drill {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: rgba(43, 107, 255, 0.06);
+    border-radius: 10px;
+    border: 1px solid rgba(43, 107, 255, 0.10);
+}
+.coach-tip-p1 .coach-drill { background: rgba(245, 180, 0, 0.08); border-color: rgba(245, 180, 0, 0.16); }
+.coach-tip-p2 .coach-drill { background: rgba(230, 57, 70, 0.06); border-color: rgba(230, 57, 70, 0.14); }
+
+.coach-drill-name {
+    font-family: var(--eg-display);
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 6px;
+    color: var(--eg-ink);
+}
+.coach-drill-prescription {
+    font-family: var(--eg-mono);
+    font-size: 11px;
+    color: var(--eg-ink-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+.coach-drill-prescription .sep { color: rgba(0,0,0,0.18); }
+.coach-drill-prescription .xp-badge {
+    background: linear-gradient(90deg, #ffd24d, var(--eg-accent-gold));
+    color: var(--eg-ink);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 11px;
+    box-shadow: 0 2px 6px rgba(245, 180, 0, 0.35);
+    font-family: var(--eg-ui);
+}
+
+.coach-why {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--eg-ink-muted);
+    font-style: italic;
+    font-family: var(--eg-serif);
+}
+
+.coach-reminder {
+    background: linear-gradient(135deg, rgba(245, 180, 0, 0.12), rgba(245, 180, 0, 0.05)) !important;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--eg-ink);
+    border-left: 4px solid var(--eg-accent-gold);
+    font-family: var(--eg-ui);
+    font-weight: 500;
+}
+
+/* =====================================================
+   ROBLOX REDESIGN — Avatar tile + streak counter
+   ===================================================== */
+.level-card {
+    background: var(--eg-surface-card);
+    border-radius: 16px !important;
+    padding: 18px 18px 14px !important;
+    box-shadow: 0 3px 14px rgba(0,0,0,0.06) !important;
+}
+.level-card-head {
+    display: grid !important;
+    grid-template-columns: 56px 1fr !important;
+    gap: 12px !important;
+    align-items: center !important;
+    margin-bottom: 14px !important;
+}
+.avatar-tile {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15), inset 0 -3px 0 rgba(0,0,0,0.18);
+    position: relative;
+}
+.avatar-tile::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0));
+    pointer-events: none;
+}
+.level-card-titles { display: flex; flex-direction: column; gap: 4px; }
+.level-name {
+    font-family: var(--eg-display) !important;
+    font-style: normal !important;
+    font-weight: 700 !important;
+    font-size: 22px !important;
+    color: var(--eg-ink) !important;
+    letter-spacing: -0.01em;
+}
+.level-meta {
+    display: flex; gap: 6px; flex-wrap: wrap;
+}
+.streak-pill {
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(135deg, #fff3d0, #ffd76b);
+    color: #6b3a00;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-family: var(--eg-ui);
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(245, 180, 0, 0.25);
+    letter-spacing: 0.02em;
+}
+
+/* Hero streak (active profile, top of page) */
+.hero-streak {
+    background: linear-gradient(135deg, #fff3d0, #ffd76b);
+    color: #6b3a00;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-family: var(--eg-ui);
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(245, 180, 0, 0.25);
+    margin-right: 8px;
+}
+.today-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Compact level-card grid on mobile */
+@media (max-width: 600px) {
+    .level-grid { grid-template-columns: 1fr; gap: 10px; }
+    .avatar-tile { width: 48px; height: 48px; font-size: 26px; border-radius: 14px; }
+    .level-name { font-size: 20px !important; }
 }
