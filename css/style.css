@@ -1989,6 +1989,89 @@ input[name="sets"]:focus {
 }
 .coach-tip .label { color: var(--ink-mute); }
 
+/* =====================================================
+   National roster (SCOUT) — Y14 for Raedyn / Y12 for Kaylan
+   ===================================================== */
+.nat-roster {
+    background: var(--eg-surface-card, #FFFFFF);
+    border-radius: 14px;
+    padding: 14px 0;
+    margin: 8px var(--gut) 16px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+}
+.nat-roster-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 580px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.nat-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.02);
+    border: 1px solid rgba(0,0,0,0.04);
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    transition: background 140ms ease, transform 140ms ease;
+    color: var(--eg-ink, #1A1D24);
+}
+.nat-row:hover { background: rgba(139, 92, 246, 0.06); }
+.nat-row:active { transform: scale(0.99); }
+.nat-row:disabled { opacity: 0.6; cursor: wait; }
+.nat-row-rank {
+    flex: 0 0 38px;
+    font-family: var(--eg-mono, monospace);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--eg-mind, #8B5CF6);
+    text-align: right;
+}
+.nat-row-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.nat-row-name {
+    font-family: var(--eg-display, serif);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--eg-ink, #1A1D24);
+    line-height: 1.2;
+}
+.nat-row-club {
+    font-family: var(--eg-ui, sans-serif);
+    font-size: 11px;
+    color: var(--ink-mute);
+    line-height: 1.2;
+}
+.nat-row-headline {
+    font-family: var(--eg-ui, sans-serif);
+    font-size: 11px;
+    color: var(--eg-primary, #2B6BFF);
+    margin-top: 3px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.nat-row-tag {
+    flex: 0 0 auto;
+    font-size: 13px;
+    color: var(--eg-success, #22C55E);
+    font-weight: 700;
+}
+.nat-row-arrow {
+    flex: 0 0 auto;
+    font-size: 15px;
+    color: var(--ink-faint);
+}
+
 /* Body + app-root: kill the dark theme remnants — cream-on-cream overscroll
    and the rgba(0,0,0,0.6) bottom radial that put a black band on the
    dashboard. */

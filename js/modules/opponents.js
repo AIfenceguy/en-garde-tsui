@@ -7,10 +7,10 @@ import { activeProfile } from '../lib/state.js';
 import {
     listOpponents, getOpponent,
     getSwot, upsertSwot, listScoutCards,
-    listBouts, loadTaxonomies
+    listBouts, loadTaxonomies, findOrCreateOpponent
 } from '../lib/db.js';
 import { chipArrayEditor, chipGroup, scaleSlider } from '../lib/chips.js';
-import { getIntel } from '../lib/fencer-intel.js';
+import { getIntel, getNationalRoster, getRosterRankKey } from '../lib/fencer-intel.js';
 import { safeWrite } from '../lib/offline.js';
 import {
     priorityFor, flatPriorityOpponents,
@@ -59,6 +59,55 @@ export async function mountOpponentsList(root) {
         root.appendChild(buildPrioritySection(profile, intel, opps));
     }
 
+    // National roster — Y14 top 100 for Raedyn, Y12 top 174 for Kaylan
+    const rankKey = getRosterRankKey(profile.role);
+    if (rankKey) {
+        const rosterSection = el('section', { class: 'nat-roster', style: { margin: '8px 0 16px' } });
+        rosterSection.appendChild(el('div', { class: 'nat-roster-head', style: { padding: '0 var(--gut)', marginBottom: '8px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px' } }, [
+            el('span', { class: 'label', style: { color: 'var(--eg-mind, #8B5CF6)' } }, [`${rankKey.toUpperCase()} NATIONAL ROSTER`]),
+            el('span', { class: 'nat-roster-count', style: { fontFamily: 'var(--eg-mono, monospace)', fontSize: '11px', color: 'var(--ink-mute)' } }, ['…'])
+        ]));
+        // Search bar
+        const rosterSearch = el('input', {
+            type: 'text', class: 'field-input',
+            placeholder: `Search ${rankKey.toUpperCase()} top-list by name or club…`,
+            oninput: (e) => renderRoster(e.target.value)
+        });
+        rosterSection.appendChild(el('div', { style: { padding: '0 var(--gut) 8px' } }, [
+            el('div', { class: 'field' }, [el('label', { class: 'field-label' }, ['Find ranked fencer']), rosterSearch])
+        ]));
+        const rosterList = el('div', { class: 'nat-roster-list', style: { padding: '0 var(--gut)' } });
+        rosterSection.appendChild(rosterList);
+        root.appendChild(rosterSection);
+
+        let _roster = [];
+        getNationalRoster(profile.role).then(r => {
+            _roster = r;
+            rosterSection.querySelector('.nat-roster-count').textContent = `${r.length} FENCERS`;
+            renderRoster('');
+        });
+
+        function renderRoster(filter) {
+            const f = (filter || '').toLowerCase().trim();
+            const filtered = !f ? _roster : _roster.filter(x =>
+                (x.name || '').toLowerCase().includes(f) ||
+                (x.club || '').toLowerCase().includes(f)
+            );
+            rosterList.innerHTML = '';
+            if (!filtered.length) {
+                rosterList.appendChild(el('p', { class: 'empty-line', style: { padding: '14px 0', fontSize: '14px' } }, ['No matches.']));
+                return;
+            }
+            const cap = filtered.slice(0, 200);
+            for (const r of cap) {
+                rosterList.appendChild(buildRosterRow(r, rankKey, opps));
+            }
+            if (filtered.length > 200) {
+                rosterList.appendChild(el('p', { style: { padding: '8px 0', fontSize: '11px', color: 'var(--ink-mute)', fontFamily: 'var(--eg-mono, monospace)' } }, [`+ ${filtered.length - 200} more — refine search`]));
+            }
+        }
+    }
+
     if (!opps.length) {
         root.appendChild(el('div', { class: 'empty' }, [
             el('p', { class: 'empty-line' }, ["The opposition writes itself in. Log a bout and they'll appear here."]),
@@ -96,6 +145,49 @@ export async function mountOpponentsList(root) {
         }
     }
     render();
+}
+
+function buildRosterRow(r, rankKey, existingOpps) {
+    const rank = r.ranks?.[rankKey];
+    const headline = r.headline || '';
+    // If we've already logged this fencer, link straight there; otherwise create-on-tap
+    const existing = (existingOpps || []).find(o => (o.name || '').toLowerCase() === (r.name || '').toLowerCase());
+    const row = el('button', {
+        type: 'button',
+        class: 'nat-row',
+        onclick: async () => {
+            try {
+                if (existing) {
+                    location.hash = `#opponents/show?id=${existing.id}`;
+                    return;
+                }
+                row.disabled = true;
+                row.querySelector('.nat-row-arrow').textContent = '…';
+                const created = await findOrCreateOpponent({
+                    name: r.name,
+                    club: r.club || null,
+                    rating: null
+                });
+                location.hash = `#opponents/show?id=${created.id}`;
+            } catch (e) {
+                row.disabled = false;
+                row.querySelector('.nat-row-arrow').textContent = '↗';
+                toast('Could not open: ' + e.message, 'error');
+            }
+        }
+    }, [
+        el('span', { class: 'nat-row-rank' }, [`#${rank}`]),
+        el('div', { class: 'nat-row-body' }, [
+            el('div', { class: 'nat-row-name' }, [r.name]),
+            el('div', { class: 'nat-row-club' }, [r.club || '—']),
+            headline ? el('div', { class: 'nat-row-headline' }, [headline]) : null
+        ].filter(Boolean)),
+        existing
+            ? el('span', { class: 'nat-row-tag', title: 'Already scouted' }, ['✓'])
+            : null,
+        el('span', { class: 'nat-row-arrow' }, ['↗'])
+    ].filter(Boolean));
+    return row;
 }
 
 function oppCard(o) {

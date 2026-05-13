@@ -55,3 +55,23 @@ export async function searchIntel(query) {
     const q = query.toLowerCase().trim();
     return (_data || []).filter(f => f.name.toLowerCase().includes(q)).slice(0, 10);
 }
+
+/**
+ * Return the national-ranking roster for a profile role.
+ *   raedyn → all Y14-ranked fencers sorted by Y14 rank
+ *   kaylan → all Y12-ranked fencers sorted by Y12 rank
+ * Each entry is the full intel record.
+ */
+export async function getNationalRoster(role) {
+    await load();
+    if (!_data) return [];
+    const rankKey = role === 'raedyn' ? 'y14' : role === 'kaylan' ? 'y12' : null;
+    if (!rankKey) return [];
+    return _data
+        .filter(f => (f.ranks || {})[rankKey])
+        .sort((a, b) => a.ranks[rankKey] - b.ranks[rankKey]);
+}
+
+export function getRosterRankKey(role) {
+    return role === 'raedyn' ? 'y14' : role === 'kaylan' ? 'y12' : null;
+}
