@@ -1988,3 +1988,30 @@ input[name="sets"]:focus {
     color: var(--eg-ink, #1A1D24);
 }
 .coach-tip .label { color: var(--ink-mute); }
+
+/* Body + app-root: kill the dark theme remnants — cream-on-cream overscroll
+   and the rgba(0,0,0,0.6) bottom radial that put a black band on the
+   dashboard. */
+body {
+    background: var(--bg);
+    color: var(--ink);
+}
+.app-root {
+    background: var(--bg);
+    background-image: radial-gradient(120% 80% at 50% -10%, rgba(201,168,106,0.06), transparent 60%);
+}
+
+/* Coach card / coach card body — these wrap the AI coach panel on the
+   dashboard; ensure dark-on-light text. */
+.coach-card,
+.coach-card-body {
+    color: var(--ink);
+}
+
+/* Avatar + streak + badges card backgrounds — anchor cream and let dark
+   text inherit cleanly. */
+.avatar-tile,
+.badge-strip,
+.badges-pill {
+    color: var(--ink);
+}
