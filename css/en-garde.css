@@ -431,3 +431,13 @@ html { background: #08070a !important; }
 /* Tier color hints on the card itself */
 .tier-platinum .ability-level { text-shadow: 0 0 8px rgba(126, 200, 227, 0.5); }
 .tier-gold .ability-level     { text-shadow: 0 0 6px rgba(212, 175, 55, 0.4); }
+
+/* Tactic tally — white text on dark pill for readability */
+.tactic-tally .name {
+    color: #f5f5f7 !important;
+    font-weight: 500;
+    font-size: 15px;
+}
+.tactic-tally .pill span {
+    color: #f5f5f7;
+}
