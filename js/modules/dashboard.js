@@ -6,6 +6,9 @@ import { el, todayISO, fmtDate, fmtDateLong, daysUntil, toast } from '../lib/uti
 import { activeProfile } from '../lib/state.js';
 import { computeAbilities, recentDailyXp, paceProjection, ABILITIES, ABILITY_META, targetLevelFor, SUMMER_NATIONALS_DATE, daysUntil as daysUntilLevels, computeStreak } from '../lib/levels.js';
 import { generateCoachTips } from '../lib/coach-ai.js';
+import { maybeShowLevelUp } from '../lib/level-up-modal.js';
+import { avatarSvg } from '../lib/avatars.js';
+import { earnedMilestones, MILESTONES } from '../lib/milestones.js';
 import {
     nextTournament, getPhysicalForDate, getMentalForDate,
     listBouts, listOpponents, listAllProfiles, fetchXpInputs
@@ -331,6 +334,11 @@ async function buildLevelDashboard() {
 
     const days = daysUntilLevels(SUMMER_NATIONALS_DATE);
 
+    // Check for level-ups since last load (per kid)
+    kids.forEach((kid, i) => {
+        try { maybeShowLevelUp(kid.id, abilitiesByKid[i]); } catch (e) {}
+    });
+
     const wrap = el('section', { class: 'level-dash stagger' });
 
     wrap.appendChild(el('div', { class: 'label-row', style: { marginTop: '32px' } }, [
@@ -345,17 +353,24 @@ async function buildLevelDashboard() {
         const abilities = abilitiesByKid[i];
         const recent = recentByKid[i];
         const streak = computeStreak(inputsByKid[i]);
-        const avatarEmoji = kid.role === 'raedyn' ? '⚔️' : (kid.role === 'kaylan' ? '🦅' : '👤');
+        const avatarTile = el('div', { class: 'avatar-tile avatar-svg', style: { background: kid.accent_hex || '#888' } });
+        avatarTile.innerHTML = avatarSvg(kid.role);
+        const earned = earnedMilestones(inputsByKid[i]);
+        const earnedSet = new Set(earned.map(m => m.id));
         const card = el('div', { class: 'level-card', style: { borderTop: `4px solid ${kid.accent_hex || '#888'}` } }, [
             el('div', { class: 'level-card-head' }, [
-                el('div', { class: 'avatar-tile', style: { background: kid.accent_hex || '#888' } }, [avatarEmoji]),
+                avatarTile,
                 el('div', { class: 'level-card-titles' }, [
                     el('div', { class: 'level-name' }, [kid.name]),
                     el('div', { class: 'level-meta' }, [
-                        el('span', { class: 'streak-pill', title: 'Days logged in a row' }, ['🔥 ', String(streak.streak), 'd streak'])
+                        el('span', { class: 'streak-pill', title: 'Days logged in a row' }, ['🔥 ', String(streak.streak), 'd streak']),
+                        el('span', { class: 'badges-pill', title: 'Milestones earned' }, ['🏅 ', String(earned.length), '/', String(MILESTONES.length)])
                     ])
                 ])
-            ])
+            ]),
+            el('div', { class: 'badge-strip', title: 'Milestone badges (faded = locked)' }, MILESTONES.slice(0, 13).map(m =>
+                el('span', { class: 'badge-stamp ' + (earnedSet.has(m.id) ? 'is-earned' : 'is-locked'), title: m.name }, [m.icon])
+            ))
         ]);
         for (const k of ABILITIES) {
             card.appendChild(abilityRow(k, abilities[k], recent[k], days));

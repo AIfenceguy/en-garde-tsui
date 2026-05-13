@@ -987,3 +987,524 @@ html { background: #08070a !important; }
     .avatar-tile { width: 48px; height: 48px; font-size: 26px; border-radius: 14px; }
     .level-name { font-size: 20px !important; }
 }
+
+/* =====================================================
+   PHASE 2 — Score pill + bout card upgrade
+   ===================================================== */
+.bout-card {
+    background: var(--eg-surface-card) !important;
+    border-radius: 14px !important;
+    padding: 14px 16px !important;
+    margin-bottom: 10px !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05) !important;
+    transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+    border-left: 4px solid var(--eg-rule) !important;
+    display: block !important;
+    flex-direction: column !important;
+}
+.bout-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08) !important;
+}
+/* Win/loss left edge */
+.bout-card:has(.scoreline-num.is-win)  { border-left-color: var(--eg-success) !important; }
+.bout-card:has(.scoreline-num.is-loss) { border-left-color: var(--eg-danger) !important; }
+
+.bout-card-opp-name {
+    font-family: var(--eg-display) !important;
+    font-style: normal !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    color: var(--eg-ink) !important;
+}
+
+/* Chunky two-tone score pill */
+.scoreline {
+    background: rgba(0,0,0,0.05);
+    border-radius: 999px;
+    padding: 4px 12px;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px !important;
+    font-family: var(--eg-display);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 18px;
+    color: var(--eg-ink);
+}
+.scoreline-num {
+    min-width: 22px;
+    text-align: center;
+}
+.scoreline-num.is-win  { color: var(--eg-success); }
+.scoreline-num.is-loss { color: var(--eg-danger); }
+.scoreline-sep { opacity: 0.4; font-weight: 500; }
+
+/* Bout tags as small pills */
+.bout-card-opp-tag {
+    background: rgba(43, 107, 255, 0.10);
+    color: var(--eg-guard);
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-family: var(--eg-ui);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.bout-card-quote {
+    font-family: var(--eg-serif);
+    font-style: italic;
+    margin-top: 8px;
+    padding: 6px 12px;
+    background: rgba(0,0,0,0.025);
+    border-left: 3px solid var(--eg-rule);
+    border-radius: 0 8px 8px 0;
+    font-size: 14px;
+    color: var(--eg-ink);
+}
+
+.bout-card-meta {
+    margin-top: 6px;
+    font-family: var(--eg-mono);
+    font-size: 10px;
+    color: var(--eg-ink-muted);
+    display: flex;
+    gap: 10px;
+    letter-spacing: 0.06em;
+}
+
+/* Touch strip — make ticks chunkier */
+.touch-strip { gap: 3px !important; margin-top: 4px !important; }
+.touch-tick {
+    width: 6px !important;
+    height: 6px !important;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.15) !important;
+}
+.touch-tick.is-scored { background: var(--eg-success) !important; }
+.touch-tick.is-flick {
+    background: var(--eg-engine) !important;
+    box-shadow: 0 0 4px var(--eg-engine);
+}
+
+/* =====================================================
+   PHASE 2 — Tap counter for bout score entry
+   ===================================================== */
+.tap-counter-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 4px 0 8px;
+}
+.tap-counter {
+    background: var(--eg-surface-card);
+    border-radius: 16px;
+    padding: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    border: 2px solid transparent;
+    text-align: center;
+}
+.tap-counter-you  { border-color: rgba(34, 197, 94, 0.4); background: linear-gradient(180deg, #fff, #f4fdf7); }
+.tap-counter-them { border-color: rgba(230, 57, 70, 0.4); background: linear-gradient(180deg, #fff, #fef5f5); }
+
+.tap-counter-label {
+    font-family: var(--eg-ui);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--eg-ink-muted);
+    margin-bottom: 4px;
+}
+.tap-counter-you  .tap-counter-label { color: var(--eg-success); }
+.tap-counter-them .tap-counter-label { color: var(--eg-danger); }
+
+.tap-counter-num {
+    display: block;
+    font-family: var(--eg-display);
+    font-weight: 700;
+    font-size: 56px;
+    line-height: 1;
+    margin: 6px 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--eg-ink);
+    transition: transform 0.15s cubic-bezier(.34,1.56,.64,1);
+}
+.tap-counter-you  .tap-counter-num { color: var(--eg-success); }
+.tap-counter-them .tap-counter-num { color: var(--eg-danger); }
+
+@keyframes tap-pop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+.tap-counter-pop { animation: tap-pop 0.22s ease-out; }
+
+.tap-counter-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 6px;
+}
+.tap-counter-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 0;
+    font-family: var(--eg-display);
+    font-weight: 700;
+    font-size: 24px;
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.10), inset 0 -3px 0 rgba(0,0,0,0.12);
+}
+.tap-counter-btn:active { transform: translateY(2px); box-shadow: 0 1px 4px rgba(0,0,0,0.10), inset 0 -1px 0 rgba(0,0,0,0.12); }
+.tap-counter-plus {
+    background: linear-gradient(180deg, #4ade80, #22c55e);
+    color: #fff;
+}
+.tap-counter-minus {
+    background: linear-gradient(180deg, #e5e7eb, #d1d5db);
+    color: var(--eg-ink);
+}
+.tap-counter-them .tap-counter-plus {
+    background: linear-gradient(180deg, #f87171, #e63946);
+}
+
+@media (max-width: 400px) {
+    .tap-counter-num { font-size: 44px; }
+    .tap-counter-btn { width: 40px; height: 40px; }
+}
+
+/* =====================================================
+   PHASE 2 — Scout priority cards as boss-card grid
+   ===================================================== */
+.priority-card {
+    background: var(--eg-surface-card) !important;
+    border-radius: 16px !important;
+    padding: 16px !important;
+    box-shadow: 0 3px 14px rgba(0,0,0,0.06), inset 0 0 0 1px rgba(0,0,0,0.02) !important;
+    border-left: 5px solid var(--eg-rule);
+    margin-bottom: 12px !important;
+    transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+    position: relative;
+}
+.priority-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.10) !important;
+}
+
+/* Threat level by rating — A* = max threat (red), B = high, C = mid, D/E = low */
+.priority-card:has(*:contains('A26')), .priority-card:has(*:contains('A25')), .priority-card:has(*:contains('A24')) { border-left-color: var(--eg-danger); }
+/* Fallback: read rating attr if added later */
+
+/* Default rating-based color is hard with :has + text; use a JS class instead */
+.priority-card.tier-A { border-left-color: var(--eg-danger); }
+.priority-card.tier-B { border-left-color: var(--eg-engine); }
+.priority-card.tier-C { border-left-color: var(--eg-guard); }
+.priority-card.tier-D, .priority-card.tier-E, .priority-card.tier-U { border-left-color: var(--eg-success); }
+
+.priority-card h2,
+.priority-card h3,
+.priority-card .opp-name,
+.priority-card a {
+    font-family: var(--eg-display) !important;
+    font-style: normal !important;
+    font-weight: 700 !important;
+}
+
+/* Rating badge — show prominently */
+.priority-card .rating-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 8px;
+    background: var(--eg-ink);
+    color: #fff;
+    font-family: var(--eg-display);
+    font-weight: 700;
+    font-size: 13px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.priority-card.tier-A .rating-badge { background: var(--eg-danger); }
+.priority-card.tier-B .rating-badge { background: var(--eg-engine); color: #fff; }
+.priority-card.tier-C .rating-badge { background: var(--eg-guard); }
+.priority-card.tier-D .rating-badge, .priority-card.tier-E .rating-badge { background: var(--eg-success); }
+.priority-card.tier-U .rating-badge { background: var(--eg-ink-muted); }
+
+/* Threat dots row */
+.threat-dots {
+    display: inline-flex;
+    gap: 3px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.threat-dots .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.12);
+}
+.threat-dots .dot.is-on {
+    background: var(--eg-danger);
+    box-shadow: 0 0 5px var(--eg-danger);
+}
+
+/* =====================================================
+   PHASE 2 — Floating Action Button
+   ===================================================== */
+.fab {
+    position: fixed;
+    bottom: 80px;   /* above bottom nav */
+    right: 18px;
+    z-index: 50;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 20px 14px 18px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #4d8bff, var(--eg-primary));
+    color: #fff;
+    font-family: var(--eg-display);
+    font-weight: 700;
+    font-size: 15px;
+    text-decoration: none;
+    box-shadow: 0 6px 18px rgba(43, 107, 255, 0.40), inset 0 -3px 0 rgba(0,0,0,0.18);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.fab:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(43, 107, 255, 0.45), inset 0 -3px 0 rgba(0,0,0,0.18); }
+.fab:active { transform: translateY(1px); box-shadow: 0 3px 8px rgba(43, 107, 255, 0.35), inset 0 -1px 0 rgba(0,0,0,0.18); }
+
+.fab-icon {
+    font-size: 22px;
+    line-height: 1;
+    width: 22px;
+    text-align: center;
+}
+.fab-label { font-size: 13px; letter-spacing: 0.02em; }
+
+@media (max-width: 380px) {
+    .fab { padding: 14px; }
+    .fab-label { display: none; }
+}
+
+/* =====================================================
+   PHASE 3 — Level-up modal
+   ===================================================== */
+.levelup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 24, 36, 0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    padding: 20px;
+}
+.levelup-overlay.is-shown { opacity: 1; }
+.levelup-modal {
+    background: linear-gradient(180deg, #fff, #fffaeb);
+    border-radius: 22px;
+    padding: 28px 28px 22px;
+    text-align: center;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.30);
+    max-width: 360px;
+    width: 100%;
+    transform: scale(0.85);
+    transition: transform 0.4s cubic-bezier(.34,1.56,.64,1);
+}
+.levelup-overlay.is-shown .levelup-modal { transform: scale(1); }
+
+.levelup-banner {
+    font-family: var(--eg-display);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.20em;
+    color: var(--eg-accent-gold);
+    margin-bottom: 14px;
+    text-transform: uppercase;
+}
+.levelup-icon {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 44px;
+    margin-bottom: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.22), inset 0 -4px 0 rgba(0,0,0,0.18);
+    animation: levelup-pulse 1.4s ease-in-out infinite;
+}
+@keyframes levelup-pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.08); }
+}
+.levelup-ability {
+    font-family: var(--eg-ui);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.20em;
+    color: var(--eg-ink-muted);
+    margin-bottom: 6px;
+}
+.levelup-from-to {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 6px 0 8px;
+}
+.levelup-old {
+    font-family: var(--eg-display);
+    font-size: 22px;
+    color: var(--eg-ink-muted);
+    opacity: 0.55;
+}
+.levelup-arrow {
+    font-family: var(--eg-display);
+    font-size: 22px;
+    color: var(--eg-ink-muted);
+}
+.levelup-new {
+    font-family: var(--eg-display);
+    font-size: 36px;
+    font-weight: 700;
+    text-shadow: 0 0 16px currentColor;
+}
+.levelup-rank {
+    font-family: var(--eg-ui);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: var(--eg-accent-gold);
+    margin: 4px 0 14px;
+    text-transform: uppercase;
+}
+.levelup-extra {
+    font-family: var(--eg-serif);
+    font-style: italic;
+    color: var(--eg-ink-muted);
+    font-size: 13px;
+    margin-bottom: 14px;
+}
+.levelup-close {
+    background: linear-gradient(180deg, #4d8bff, var(--eg-primary));
+    color: #fff;
+    border: 0;
+    border-radius: 999px;
+    padding: 12px 24px;
+    font-family: var(--eg-display);
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(43, 107, 255, 0.40), inset 0 -2px 0 rgba(0,0,0,0.18);
+    transition: transform 0.1s ease;
+}
+.levelup-close:active { transform: translateY(1px); }
+
+/* =====================================================
+   PHASE 3 — SVG fencer avatars
+   ===================================================== */
+.avatar-tile.avatar-svg {
+    padding: 4px;
+    overflow: hidden;
+}
+.avatar-tile.avatar-svg svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.20));
+}
+
+/* =====================================================
+   PHASE 3 — Milestone badges
+   ===================================================== */
+.badges-pill {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(43, 107, 255, 0.10);
+    color: var(--eg-guard);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-family: var(--eg-ui);
+    font-size: 11px;
+    font-weight: 700;
+}
+.badge-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+}
+.badge-stamp {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.04);
+    font-size: 16px;
+    transition: transform 0.15s ease;
+    cursor: help;
+}
+.badge-stamp:hover { transform: scale(1.12); }
+.badge-stamp.is-locked {
+    opacity: 0.22;
+    filter: grayscale(1);
+}
+.badge-stamp.is-earned {
+    background: linear-gradient(135deg, #fff3d0, #ffd76b);
+    box-shadow: 0 2px 6px rgba(245, 180, 0, 0.25);
+}
+
+/* =====================================================
+   PHASE 3 — Body page polish
+   ===================================================== */
+/* Today's session card — chunkier */
+.body-session-card {
+    border-radius: 14px !important;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+
+/* Drill row in today's session — visual upgrade */
+.drill-row {
+    background: var(--eg-surface-card);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    transition: transform 0.15s ease;
+    border-left: 3px solid var(--eg-engine);
+}
+.drill-row:hover { transform: translateX(3px); }
+
+/* Make the input fields more chunky on body page */
+.body-page input[type=number],
+input[name="actual_reps"],
+input[name="sets"] {
+    background: #fff !important;
+    color: var(--eg-ink) !important;
+    border: 2px solid var(--eg-engine) !important;
+    border-radius: 12px !important;
+    font-family: var(--eg-display) !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+    font-size: 18px !important;
+    padding: 8px 10px !important;
+    box-shadow: 0 2px 6px rgba(245, 180, 0, 0.15);
+}
+input[name="actual_reps"]:focus,
+input[name="sets"]:focus {
+    outline: 0 !important;
+    box-shadow: 0 0 0 4px rgba(245, 180, 0, 0.30), 0 2px 8px rgba(245, 180, 0, 0.25) !important;
+}

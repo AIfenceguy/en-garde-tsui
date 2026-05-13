@@ -205,23 +205,38 @@ export async function mountBoutEntry(root, params) {
         el('input', { type: 'text', name: 'opponent_club', class: 'field-input', value: editing?.opponent_club || '', placeholder: 'home club' })
     ]));
 
-    // SECTION: Score
+    // SECTION: Score — Roblox-style tap counter
     form.appendChild(sectionLabel('Score'));
-    form.appendChild(el('div', { class: 'field' }, [
-        el('div', { style: { display: 'flex', alignItems: 'center', gap: '14px', padding: '4px 0' } }, [
-            el('input', {
-                type: 'number', name: 'my_score', class: 'field-input field-numeric',
-                min: 0, max: 30, value: editing?.my_score ?? '', placeholder: 'me', inputmode: 'numeric',
-                style: { textAlign: 'center', maxWidth: '80px' }
-            }),
-            el('span', { style: { color: 'var(--ink-faint)', fontFamily: 'var(--mono)', fontSize: '20px' } }, ['—']),
-            el('input', {
-                type: 'number', name: 'their_score', class: 'field-input field-numeric',
-                min: 0, max: 30, value: editing?.their_score ?? '', placeholder: 'them', inputmode: 'numeric',
-                style: { textAlign: 'center', maxWidth: '80px' }
-            })
-        ])
-    ]));
+    {
+        const myInitial  = parseInt(editing?.my_score    ?? 0, 10) || 0;
+        const themInitial= parseInt(editing?.their_score ?? 0, 10) || 0;
+        const myInput    = el('input', { type: 'hidden', name: 'my_score',    value: String(myInitial) });
+        const themInput  = el('input', { type: 'hidden', name: 'their_score', value: String(themInitial) });
+        const myDisplay  = el('span', { class: 'tap-counter-num' }, [String(myInitial)]);
+        const themDisplay= el('span', { class: 'tap-counter-num' }, [String(themInitial)]);
+        const tap = (display, hidden, delta) => {
+            const cur = (parseInt(hidden.value, 10) || 0) + delta;
+            const clamped = Math.max(0, Math.min(30, cur));
+            hidden.value = String(clamped);
+            display.textContent = String(clamped);
+            display.classList.remove('tap-counter-pop'); void display.offsetWidth; display.classList.add('tap-counter-pop');
+            if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(10);
+        };
+        const buildCounter = (label, kind, hidden, display) => el('div', { class: 'tap-counter ' + kind }, [
+            el('div', { class: 'tap-counter-label' }, [label]),
+            display,
+            el('div', { class: 'tap-counter-buttons' }, [
+                el('button', { type: 'button', class: 'tap-counter-btn tap-counter-minus', onclick: () => tap(display, hidden, -1) }, ['−']),
+                el('button', { type: 'button', class: 'tap-counter-btn tap-counter-plus', onclick: () => tap(display, hidden, +1) }, ['+'])
+            ])
+        ]);
+        form.appendChild(el('div', { class: 'tap-counter-row' }, [
+            buildCounter('YOUR TOUCHES', 'tap-counter-you', myInput, myDisplay),
+            buildCounter('THEIR TOUCHES', 'tap-counter-them', themInput, themDisplay)
+        ]));
+        form.appendChild(myInput);
+        form.appendChild(themInput);
+    }
 
     // SECTION: How I scored — tally per tactic
     form.appendChild(sectionLabel('How I scored'));

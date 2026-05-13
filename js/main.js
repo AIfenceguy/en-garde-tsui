@@ -110,6 +110,31 @@ function setupBottomNavActive() {
     update();
 }
 
+
+
+// =====================================================
+// Phase 2 — Floating Action Button (always accessible "+ Log a bout")
+// =====================================================
+function setupFAB() {
+    if (document.getElementById('fab-log-bout')) return;
+    const fab = document.createElement('a');
+    fab.id = 'fab-log-bout';
+    fab.className = 'fab fab-primary';
+    fab.href = '#bouts/new';
+    fab.setAttribute('aria-label', 'Log a bout');
+    fab.innerHTML = '<span class="fab-icon">+</span><span class="fab-label">Log bout</span>';
+    document.body.appendChild(fab);
+
+    function update() {
+        const hash = (location.hash || '#dashboard').slice(1).split('/')[0].split('?')[0];
+        // Hide on the bout-entry route itself
+        fab.style.display = (hash === 'bouts' && /^#bouts\/new/.test(location.hash)) ? 'none' : '';
+    }
+    window.addEventListener('hashchange', update);
+    update();
+}
+
+
 bootstrap().catch((e) => {
     console.error(e);
     APP.innerHTML = `<div class="card" style="margin-top:40px"><h3 style="color:var(--danger)">Couldn't start the app.</h3><pre class="mono dim">${e?.message || e}</pre></div>`;

@@ -732,3 +732,26 @@ function buildOpponentProfilerCard(opp) {
 
     return wrap;
 }
+
+
+// =====================================================
+// Phase 2 — Color-code priority cards by rating tier
+// =====================================================
+function tagPriorityCardsByTier() {
+    document.querySelectorAll('.priority-card').forEach(card => {
+        const text = card.textContent || '';
+        const m = text.match(/\b([A-EU])\d{2}\b/);
+        const letter = m ? m[1].toUpperCase() : 'U';
+        // remove old tier classes
+        card.classList.remove('tier-A','tier-B','tier-C','tier-D','tier-E','tier-U');
+        card.classList.add('tier-' + letter);
+        // Find a rating-looking span and wrap with badge if not already
+        // (Lighter touch — skip wrap, the border-left + future enhancement is enough)
+    });
+}
+
+// Auto-tag priority cards whenever the DOM updates (safety net)
+if (typeof MutationObserver !== 'undefined') {
+    const _ptObs = new MutationObserver(() => tagPriorityCardsByTier());
+    _ptObs.observe(document.body, { childList: true, subtree: true });
+}
