@@ -525,3 +525,51 @@ html { background: #08070a !important; }
     font-size: 13px;
     color: var(--ink, #555);
 }
+
+/* Roblox-style quest accents */
+.coach-tip {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.coach-tip:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+
+.coach-tip-label {
+    font-weight: 700;
+    color: #d4af37 !important;
+    font-size: 11px;
+}
+
+.coach-tip-p1 {
+    background: linear-gradient(135deg, #fff, #fff8e1 100%) !important;
+    border-left: 5px solid #d4af37 !important;
+}
+.coach-tip-p2 {
+    background: linear-gradient(135deg, #fff, #ffeed7 100%) !important;
+    border-left: 5px solid #c0392b !important;
+}
+.coach-tip-p3 {
+    background: linear-gradient(135deg, #fff, #e7f3ff 100%) !important;
+    border-left: 5px solid #2d6a96 !important;
+}
+
+.coach-drill-prescription .xp-badge {
+    box-shadow: 0 0 8px rgba(241, 196, 15, 0.4);
+    animation: xp-glow 3s ease-in-out infinite;
+}
+@keyframes xp-glow {
+    0%, 100% { box-shadow: 0 0 8px rgba(241, 196, 15, 0.4); }
+    50%      { box-shadow: 0 0 14px rgba(241, 196, 15, 0.7); }
+}
+
+.coach-reminder {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(212, 175, 55, 0.05)) !important;
+    border-left: 3px solid #d4af37;
+    font-weight: 500;
+}
+
+/* Level dashboard - more game-y */
+.level-name { font-size: 24px !important; }
+.ability-bar { height: 10px !important; }
+.ability-level {
+    font-size: 14px !important;
+    text-shadow: 0 0 4px rgba(0,0,0,0.1);
+}

@@ -328,7 +328,7 @@ async function buildLevelDashboard() {
     const wrap = el('section', { class: 'level-dash stagger' });
 
     wrap.appendChild(el('div', { class: 'label-row', style: { marginTop: '32px' } }, [
-        el('span', { class: 'label' }, ['Progress · Summer Nationals']),
+        el('span', { class: 'label' }, ['⚔️ Your Stats · Boss Battle: Summer Nationals']),
         el('span', { class: 'label label-gold' }, [
             days === 0 ? 'today' : `${days} day${days===1?'':'s'} to go`
         ])
@@ -341,7 +341,7 @@ async function buildLevelDashboard() {
         const card = el('div', { class: 'level-card', style: { borderTop: `3px solid ${kid.accent_hex || '#888'}` } }, [
             el('div', { class: 'level-card-head' }, [
                 el('span', { class: 'level-name' }, [kid.name]),
-                el('span', { class: 'level-tagline' }, ['target by Jul 1'])
+                el('span', { class: 'level-tagline' }, ['🎯 hit max by Jul 1'])
             ])
         ]);
         for (const k of ABILITIES) {
@@ -359,16 +359,16 @@ function abilityRow(key, ability, dailyXp, days) {
     const target = targetLevelFor(key);
     const pace = paceProjection(ability, dailyXp || 0, target, days);
     const paceIcon =
-        pace.status === 'done'        ? '🏆' :
-        pace.status === 'not_started' ? '🚀' :
-        pace.status === 'on_track'    ? '🟢' :
-        pace.status === 'close'       ? '🟡' : '🔴';
+        pace.status === 'done'        ? '👑' :
+        pace.status === 'not_started' ? '🎮' :
+        pace.status === 'on_track'    ? '⚡' :
+        pace.status === 'close'       ? '⏰' : '💪';
     const paceText =
-        pace.status === 'done'        ? `MAX · target Lv ${target}` :
-        pace.status === 'not_started' ? `Get started! target Lv ${target}` :
-        pace.status === 'on_track'    ? `on pace · ~${Math.round(dailyXp)} XP/day` :
-        pace.status === 'close'       ? `close · ${pace.xpPerDayNeeded}/day to Lv ${target}` :
-                                        `${pace.xpPerDayNeeded}/day to Lv ${target}`;
+        pace.status === 'done'        ? `BOSS DEFEATED · MAX LV ${target}` :
+        pace.status === 'not_started' ? `Start your quest! Goal: Lv ${target}` :
+        pace.status === 'on_track'    ? `LEVELING UP! ~${Math.round(dailyXp)} XP/day` :
+        pace.status === 'close'       ? `Almost there · ${pace.xpPerDayNeeded}/day to Lv ${target}` :
+                                        `Push it! ${pace.xpPerDayNeeded}/day to Lv ${target}`;
     return el('div', { class: `ability-row tier-${ability.rank.tier}` }, [
         el('div', { class: 'ability-head' }, [
             el('span', { class: 'ability-icon' }, [meta.icon]),
@@ -403,9 +403,9 @@ async function buildAICoachSection(profile) {
 
     const wrap = el('section', { class: 'coach-tips stagger', style: { padding: '0 var(--gut)', marginTop: '28px' } });
     wrap.appendChild(el('div', { class: 'label-row' }, [
-        el('span', { class: 'label' }, ['AI Coach · Train These']),
+        el('span', { class: 'label' }, ['🎯 Daily Quests · Level Up!']),
         el('span', { class: 'label label-gold' }, [
-            result.weeklyXpForecast > 0 ? `+${result.weeklyXpForecast} XP / week if you follow it` : `${result.boutCount} bouts analyzed`
+            result.weeklyXpForecast > 0 ? `+${result.weeklyXpForecast} XP / week 💎 if you finish all quests` : `${result.boutCount} bouts analyzed`
         ])
     ]));
 

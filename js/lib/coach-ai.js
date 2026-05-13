@@ -149,7 +149,7 @@ export function generateCoachTips(data) {
         const drill = TACTIC_DRILLS[drillKey] || null;
         tips.push({
             priority: 1,
-            label: 'YOUR ACTIVE LESSON FOCUS',
+            label: '⭐ MAIN QUEST · LESSON FOCUS',
             title: prettifyTopicSlug(top.slug),
             mastery: top.mastery,
             from: `${top.coach || 'Coach'} · ${top.lessonDate}`,
@@ -178,7 +178,7 @@ export function generateCoachTips(data) {
         const drill = TACTIC_DRILLS[top.drill];
         tips.push({
             priority: 2,
-            label: 'LOSS PATTERN — TRAIN THE ANTIDOTE',
+            label: '🥷 BOSS QUEST · BEAT YOUR NEMESIS',
             title: `Beat the ${top.reason}`,
             diagnosis: `${top.count} of your recent losses fit this pattern.`,
             drill: drill ? {
@@ -199,7 +199,7 @@ export function generateCoachTips(data) {
         if (drill) {
             tips.push({
                 priority: 3,
-                label: 'TACTIC TO FIX',
+                label: '🔧 SKILL QUEST · MASTER THIS MOVE',
                 title: prettifyTopicSlug(top.slug),
                 diagnosis: `You\'ve tried "${prettifyTopicSlug(top.slug)}" ${top.attempts} times in recent bouts and only landed ${top.successes}. Miss rate: ${Math.round(100 * (1 - top.successes / top.attempts))}%.`,
                 drill: {
