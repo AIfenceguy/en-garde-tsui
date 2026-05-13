@@ -1924,3 +1924,67 @@ input[name="sets"]:focus {
 .ft-last5 li { padding: 3px 0; color: var(--eg-ink-muted); }
 .ft-last5 .r-win { color: var(--eg-success); }
 .ft-last5 .r-loss { color: var(--eg-danger); }
+
+/* =====================================================
+   CONTRAST FIX (v19→v20) — repoint dark-theme cream tokens
+   to dark-on-light values so legacy components stay readable
+   on the active light "Roblox" surface.
+   ===================================================== */
+:root {
+    --ink: #1A1D24;
+    --ink-soft: #374151;
+    --ink-mute: #6B7280;
+    --ink-faint: #9CA3AF;
+    --rule: #E5E7EB;
+    --rule-strong: #D1D5DB;
+    --surface: #FFFFFF;
+    --surface-2: #FAF7F2;
+    --bg: #FAF7F2;
+}
+
+/* Tactic tally: the row name text was forcing near-white via !important */
+.tactic-tally .name {
+    color: var(--eg-ink, #1A1D24) !important;
+}
+.tactic-tally-list {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 6px 10px;
+}
+
+/* Auth-tagline was reused as form hints — give them readable color on white */
+.auth-tagline {
+    color: var(--ink-mute);
+}
+
+/* Section labels (sectionLabel() helper in bouts.js) — make readable on cream */
+.label, .label-row .label {
+    color: var(--ink-mute);
+}
+.label-row::after {
+    background: var(--rule);
+}
+
+/* Form fields placeholders + dividers */
+.field-input::placeholder,
+.field-textarea::placeholder {
+    color: var(--ink-faint);
+}
+.field {
+    border-bottom-color: var(--rule);
+}
+
+/* Tap counters: numerals were too light to pass AA on the white gradient */
+.tap-counter-you .tap-counter-num { color: #15803D; }
+.tap-counter-them .tap-counter-num { color: #B91C1C; }
+
+/* Score lines on bout cards — losses + separator were cream-on-cream */
+.scoreline-num.is-loss { color: var(--ink-mute); }
+.scoreline-sep        { color: var(--rule-strong); }
+
+/* Coach tip card — anchor explicitly to the light system */
+.coach-tip {
+    background: var(--eg-surface-card, #FFFFFF);
+    color: var(--eg-ink, #1A1D24);
+}
+.coach-tip .label { color: var(--ink-mute); }
