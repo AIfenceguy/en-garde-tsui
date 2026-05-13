@@ -10,6 +10,7 @@ import {
     listBouts, loadTaxonomies
 } from '../lib/db.js';
 import { chipArrayEditor, chipGroup, scaleSlider } from '../lib/chips.js';
+import { getIntel } from '../lib/fencer-intel.js';
 import { safeWrite } from '../lib/offline.js';
 import {
     priorityFor, flatPriorityOpponents,
@@ -224,6 +225,12 @@ export async function mountOpponentDetail(root, params) {
             } catch (e) { toast('Save failed: ' + e.message, 'error'); }
         }, 500);
     }
+
+    // FT Intel — tactical scout report (if fencer is in our intel DB)
+    try {
+        const ftPanel = await buildFtIntelPanel(opp);
+        if (ftPanel) root.appendChild(ftPanel);
+    } catch (e) { console.warn('FT intel skip', e); }
 
     // Claude profiler — Sonnet read on this opponent
     root.appendChild(buildOpponentProfilerCard(opp));
@@ -755,3 +762,95 @@ if (typeof MutationObserver !== 'undefined') {
     const _ptObs = new MutationObserver(() => tagPriorityCardsByTier());
     _ptObs.observe(document.body, { childList: true, subtree: true });
 }
+
+
+// =====================================================
+// Phase: FT Intel — show tactical insights for this opponent (if matched)
+// =====================================================
+async function buildFtIntelPanel(opp) {
+    const intel = await getIntel(opp?.name);
+    if (!intel) return null;
+    const wrap = document.createElement('section');
+    wrap.className = 'ft-intel-panel';
+    const ranks = ['y14','cadet','junior']
+        .filter(k => intel.ranks?.[k])
+        .map(k => `<span class="ft-rank-pill ft-rank-${k}">${k.toUpperCase()} #${intel.ranks[k]}</span>`).join('');
+
+    // NEW: actionable plays (sorted by priority) — tag / data / game_plan / cue
+    const plays = [...(intel.plays || [])].sort((a,b) => (a.priority||99) - (b.priority||99));
+    const playsHtml = plays.map(p => `
+        <article class="ft-play-card ft-play-p${p.priority || 3}">
+            <header class="ft-play-tag">${p.tag || ''}</header>
+            ${p.data ? `<div class="ft-play-data">${p.data}</div>` : ''}
+            ${p.game_plan ? `
+                <div class="ft-play-row">
+                    <span class="ft-play-label">GAME PLAN</span>
+                    <p class="ft-play-text">${p.game_plan}</p>
+                </div>` : ''}
+            ${p.cue ? `
+                <div class="ft-play-row ft-play-cue">
+                    <span class="ft-play-label">IN-BOUT CUE</span>
+                    <p class="ft-play-text">${p.cue}</p>
+                </div>` : ''}
+        </article>
+    `).join('');
+
+    // Legacy fallback if an entry still uses key_insights
+    const legacyInsights = (!plays.length && Array.isArray(intel.key_insights))
+        ? `<ul class="ft-insights">${intel.key_insights.map(i => `<li>${i}</li>`).join('')}</ul>` : '';
+
+    const vsTier = Object.entries(intel.vs_tier || {})
+        .filter(([t,v]) => v.w+v.l > 0 && t !== 'U')
+        .map(([t,v]) => `<div class="ft-tier-row"><span class="ft-tier-badge ft-tier-${t}">${t}</span><span class="ft-tier-record">${v.w}-${v.l}</span><span class="ft-tier-pct">${v.pct}%</span></div>`).join('');
+    const last5 = (intel.recent_5 || []).map(b => `<li>${b.date || '?'} · ${b.round || '?'} · <strong class="${b.result==='V'?'r-win':'r-loss'}">${b.result} ${b.score}</strong> · vs ${b.opp_rating || '?'}</li>`).join('');
+    const pt = intel.pool_touches;
+    const cb = intel.close_bouts;
+    const days = intel.days_since_last_bout;
+    const headlinePlan = intel.headline_plan ? `<div class="ft-intel-headline-plan">${intel.headline_plan}</div>` : '';
+    wrap.innerHTML = `
+        <div class="ft-intel-head">
+            <span class="ft-intel-label">🥷 FT SCOUT INTEL</span>
+            <div class="ft-intel-ranks">${ranks}</div>
+            <a class="ft-intel-link" href="${intel.ft_url}" target="_blank" rel="noopener">↗ FT profile</a>
+        </div>
+        ${intel.headline ? `<div class="ft-intel-headline">${intel.headline}</div>` : (intel.tagline ? `<div class="ft-intel-tagline">${intel.tagline}</div>` : '')}
+        ${headlinePlan}
+        ${playsHtml ? `<div class="ft-plays-stack">${playsHtml}</div>` : legacyInsights}
+        <div class="ft-intel-grid">
+            <div class="ft-stat">
+                <div class="ft-stat-label">CAREER</div>
+                <div class="ft-stat-value">${intel.career_bouts}</div>
+                <div class="ft-stat-sub">${Math.round((intel.career_win_rate||0)*100)}% wr</div>
+            </div>
+            <div class="ft-stat">
+                <div class="ft-stat-label">RECENT POOL</div>
+                <div class="ft-stat-value">${intel.recent_record.pool.pct}%</div>
+                <div class="ft-stat-sub">${intel.recent_record.pool.w}-${intel.recent_record.pool.l}</div>
+            </div>
+            <div class="ft-stat">
+                <div class="ft-stat-label">RECENT DE</div>
+                <div class="ft-stat-value">${intel.recent_record.de.pct}%</div>
+                <div class="ft-stat-sub">${intel.recent_record.de.w}-${intel.recent_record.de.l}</div>
+            </div>
+            ${cb && cb.total ? `<div class="ft-stat">
+                <div class="ft-stat-label">CLOSE (1-T)</div>
+                <div class="ft-stat-value">${cb.w}-${cb.l}</div>
+                <div class="ft-stat-sub">${cb.total} bouts</div>
+            </div>` : ''}
+            ${pt ? `<div class="ft-stat">
+                <div class="ft-stat-label">POOL AVG</div>
+                <div class="ft-stat-value">${pt.avg_for}–${pt.avg_against}</div>
+                <div class="ft-stat-sub">for–against</div>
+            </div>` : ''}
+            ${days !== undefined ? `<div class="ft-stat">
+                <div class="ft-stat-label">LAST BOUT</div>
+                <div class="ft-stat-value">${days}d</div>
+                <div class="ft-stat-sub">ago</div>
+            </div>` : ''}
+        </div>
+        ${vsTier ? `<details class="ft-tier-block"><summary>VS RATING TIER (lifetime)</summary><div class="ft-tier-list">${vsTier}</div></details>` : ''}
+        ${last5 ? `<details class="ft-last5-block"><summary>LAST 5 RANKED BOUTS</summary><ul class="ft-last5">${last5}</ul></details>` : ''}
+    `;
+    return wrap;
+}
+

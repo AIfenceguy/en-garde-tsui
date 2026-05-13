@@ -6,10 +6,11 @@ import { el, todayISO, fmtDate, daysUntil, toast } from '../lib/util.js';
 import { activeProfile } from '../lib/state.js';
 import {
     getPhysicalForDate, listPhysicalRecent, nextTournament,
-    listDrillLibrary, addDrillToLibrary
+    listDrillLibrary, addDrillToLibrary, listBouts, listOpponents
 } from '../lib/db.js';
 import { safeWrite } from '../lib/offline.js';
 import { scaleSlider } from '../lib/chips.js';
+import { getWeaknessDrills } from '../lib/weakness-drills.js';
 
 const CATEGORIES = [
     { slug: 'explosive',    label: 'Explosive' },
@@ -100,6 +101,12 @@ export async function mountPhysical(root) {
             el('div', { class: 'label', style: { color: 'var(--loss)' } }, [`Knee soreness flagged ${kneeHits}× in last 14 days`]),
             el('p', { style: { fontSize: '14px', margin: '8px 0 0' } }, ['Rising knee pain during plyo work is worth a check-in. Advisory only — talk to your coach.'])
         ]));
+    }
+
+    // ── Weak-Spot Training (prescriptive drills for this fencer's known weaknesses) ──
+    const weaknesses = getWeaknessDrills(profile.role);
+    if (weaknesses.length) {
+        root.appendChild(buildWeaknessPanel(profile, weaknesses));
     }
 
     const sessionSection = el('div', { style: { padding: '0 var(--gut)' } });
@@ -288,10 +295,10 @@ export async function mountPhysical(root) {
         }
 
         const newForm = el('div', { style: { marginTop: '14px', padding: '14px', background: 'var(--surface-2)', borderRadius: '12px' } });
-        const newLabel = el('input', { type: 'text', class: 'field-input', placeholder: 'New drill name', style: { width: '100%', marginBottom: '8px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px' } });
-        const newReps = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: 'reps', min: 0, style: { maxWidth: '90px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' } });
-        const newSets = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: 'sets', min: 1, value: 1, style: { maxWidth: '70px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' } });
-        const newNotes = el('input', { type: 'text', class: 'field-input', placeholder: 'note (optional)', style: { flex: 1, background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px' } });
+        const newLabel = el('input', { type: 'text', class: 'field-input', placeholder: 'Drill name — e.g. "Push-up" or "Box jumps"', style: { width: '100%', marginBottom: '8px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px' } });
+        const newReps = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: '20', min: 0, style: { maxWidth: '90px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' } });
+        const newSets = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: '3', min: 1, value: 1, style: { maxWidth: '70px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' } });
+        const newNotes = el('input', { type: 'text', class: 'field-input', placeholder: 'Tip — e.g. "60s rest" or "slow tempo"', style: { flex: 1, background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px' } });
         newForm.appendChild(el('div', { style: { fontSize: '12px', color: 'var(--ink-mute)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' } }, [`New drill — ${CATEGORIES.find((c) => c.slug === activeCat)?.label}`]));
         newForm.appendChild(newLabel);
         newForm.appendChild(el('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' } }, [
@@ -406,5 +413,136 @@ export async function mountPhysical(root) {
             await safeWrite({ table: 'physical_sessions', op: 'upsert', payload });
             toast('Saved' + (navigator.onLine ? '' : ' (offline — will sync)'));
         } catch (e) { toast('Save failed: ' + e.message, 'error'); }
+    }
+
+    // Weakness panel hooks into the live `session` array so "Add to today" works.
+    function buildWeaknessPanel(profile, weaknesses) {
+        const panel = el('section', { class: 'weak-panel', style: { margin: '0 var(--gut) 18px' } });
+        panel.appendChild(el('div', { class: 'weak-head' }, [
+            el('span', { class: 'weak-eyebrow' }, ['🎯 WEAK-SPOT TRAINING']),
+            el('span', { class: 'weak-sub' }, [`Drills tuned to what beats ${profile.name.split(' ')[0]}.`])
+        ]));
+
+        for (const w of weaknesses) {
+            const card = el('article', { class: 'weak-card', 'data-slug': w.slug }, [
+                el('header', { class: 'weak-card-head' }, [
+                    el('span', { class: 'weak-card-emoji' }, [w.emoji]),
+                    el('span', { class: 'weak-card-title' }, [w.label]),
+                    el('span', { class: 'weak-card-record', 'data-role': 'record' }, ['—'])
+                ]),
+                el('p', { class: 'weak-card-why' }, [w.why_it_hurts]),
+                buildPlaySection('TECHNIQUE & DRILLS', w.technique, w, 'technique'),
+                buildPlaySection('BODY TRAINING', w.body, w, 'body')
+            ]);
+            panel.appendChild(card);
+        }
+
+        // Async — compute live signals from bouts vs opponent archetypes + drill dose
+        (async () => {
+            try {
+                const [allBouts, allOpps, recent14] = await Promise.all([
+                    listBouts({ limit: 80 }),
+                    listOpponents(),
+                    listPhysicalRecent(14)
+                ]);
+                const oppById = new Map(allOpps.map(o => [o.id, o]));
+                const cutoff = new Date(Date.now() - 60 * 86400000);
+                for (const w of weaknesses) {
+                    let wins = 0, losses = 0;
+                    for (const b of allBouts) {
+                        if (!b.date || !b.outcome) continue;
+                        if (new Date(b.date) < cutoff) continue;
+                        const o = oppById.get(b.opponent_id);
+                        if (!o || !Array.isArray(o.archetypes)) continue;
+                        if (!o.archetypes.includes(w.slug)) continue;
+                        if (b.outcome === 'win') wins++;
+                        else if (b.outcome === 'loss') losses++;
+                    }
+                    const recEl = panel.querySelector(`[data-slug="${w.slug}"] [data-role="record"]`);
+                    if (recEl) {
+                        if (wins + losses === 0) {
+                            recEl.textContent = 'No bouts tagged yet — tag opponents to track';
+                            recEl.classList.add('weak-empty');
+                        } else {
+                            const pct = Math.round((wins / (wins + losses)) * 100);
+                            recEl.textContent = `Last 60d: ${wins}-${losses} (${pct}%)`;
+                            recEl.classList.toggle('weak-urgent', wins + losses >= 3 && pct < 50);
+                        }
+                    }
+                }
+                panel.querySelectorAll('[data-add-slug]').forEach(btn => {
+                    const slug = btn.getAttribute('data-add-slug');
+                    const lib = libBySlug.get(slug);
+                    if (!lib) {
+                        btn.disabled = true;
+                        btn.textContent = '(no library match)';
+                        btn.classList.add('weak-add-missing');
+                        return;
+                    }
+                    btn.addEventListener('click', () => {
+                        if (session.find(s => s.drill_slug === slug)) {
+                            toast('Already in today’s session');
+                            return;
+                        }
+                        session.push({
+                            drill_slug: lib.slug,
+                            label: lib.label,
+                            category: lib.category,
+                            target_reps: lib.default_reps || 0,
+                            sets: lib.default_sets || 1,
+                            actual_reps: 0,
+                            done: false
+                        });
+                        renderSession();
+                        toast(`Added ${lib.label} to today`);
+                        btn.textContent = '✓ Added';
+                        btn.disabled = true;
+                    });
+                });
+                panel.querySelectorAll('[data-dose-slug]').forEach(pill => {
+                    const slug = pill.getAttribute('data-dose-slug');
+                    let count = 0;
+                    for (const s of recent14) {
+                        if (!Array.isArray(s.drills_completed)) continue;
+                        if (s.drills_completed.some(d => d.drill_slug === slug && d.done)) count++;
+                    }
+                    pill.textContent = count ? `DONE ${count}× / 14d` : 'NOT DONE THIS WEEK';
+                    pill.classList.toggle('weak-dose-cold', count === 0);
+                    pill.classList.toggle('weak-dose-warm', count > 0 && count < 3);
+                    pill.classList.toggle('weak-dose-hot', count >= 3);
+                });
+            } catch (e) {
+                console.warn('[weakness] signal load failed:', e);
+            }
+        })();
+
+        return panel;
+    }
+
+    function buildPlaySection(label, plays, w, kind) {
+        if (!plays || !plays.length) return el('div', {}, []);
+        return el('div', { class: 'weak-section' }, [
+            el('div', { class: 'weak-section-label' }, [label]),
+            ...plays.map(p => el('div', { class: `weak-play weak-play-p${p.priority || 3}` }, [
+                el('div', { class: 'weak-play-head' }, [
+                    el('span', { class: 'weak-play-tag' }, [p.tag]),
+                    p.add_drill ? el('span', { class: 'weak-dose-pill', 'data-dose-slug': p.add_drill }, ['—']) : null
+                ].filter(Boolean)),
+                p.data ? el('div', { class: 'weak-play-data' }, [p.data]) : null,
+                el('div', { class: 'weak-play-row' }, [
+                    el('span', { class: 'weak-play-label' }, ['GAME PLAN']),
+                    el('p', { class: 'weak-play-text' }, [p.game_plan])
+                ]),
+                el('div', { class: 'weak-play-row weak-play-cue' }, [
+                    el('span', { class: 'weak-play-label' }, [kind === 'body' ? 'CUE' : 'IN-LESSON CUE']),
+                    el('p', { class: 'weak-play-text' }, [p.cue])
+                ]),
+                p.add_drill ? el('button', {
+                    type: 'button',
+                    class: 'weak-add-btn',
+                    'data-add-slug': p.add_drill
+                }, ['+ Add to today']) : null
+            ].filter(Boolean)))
+        ]);
     }
 }
