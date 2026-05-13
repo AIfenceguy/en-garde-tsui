@@ -288,10 +288,10 @@ export async function mountPhysical(root) {
         }
 
         const newForm = el('div', { style: { marginTop: '14px', padding: '14px', background: 'var(--surface-2)', borderRadius: '12px' } });
-        const newLabel = el('input', { type: 'text', class: 'field-input', placeholder: 'New drill name', style: { width: '100%', marginBottom: '8px' } });
-        const newReps = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: 'reps', min: 0, style: { maxWidth: '90px' } });
-        const newSets = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: 'sets', min: 1, value: 1, style: { maxWidth: '70px' } });
-        const newNotes = el('input', { type: 'text', class: 'field-input', placeholder: 'note (optional)', style: { flex: 1 } });
+        const newLabel = el('input', { type: 'text', class: 'field-input', placeholder: 'New drill name', style: { width: '100%', marginBottom: '8px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px' } });
+        const newReps = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: 'reps', min: 0, style: { maxWidth: '90px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' } });
+        const newSets = el('input', { type: 'number', class: 'field-input field-numeric', placeholder: 'sets', min: 1, value: 1, style: { maxWidth: '70px', background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px', textAlign: 'center' } });
+        const newNotes = el('input', { type: 'text', class: 'field-input', placeholder: 'note (optional)', style: { flex: 1, background: '#fff', color: '#1a1a1a', border: '1px solid #d9d9dc', borderRadius: '8px', padding: '10px 12px' } });
         newForm.appendChild(el('div', { style: { fontSize: '12px', color: 'var(--ink-mute)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' } }, [`New drill — ${CATEGORIES.find((c) => c.slug === activeCat)?.label}`]));
         newForm.appendChild(newLabel);
         newForm.appendChild(el('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' } }, [
