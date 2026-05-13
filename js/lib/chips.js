@@ -151,18 +151,22 @@ export function chipArrayEditor({ values = [], onChange = null, placeholder = 'a
                 el('span', { class: 'chip on', onclick: () => { arr.splice(i, 1); rerender(); onChange?.(arr); } }, [v, ' ', el('span', { class: 'x' }, ['×'])])
             );
         }
+        const commit = () => {
+            const v = input.value.trim();
+            if (v) { arr.push(v); rerender(); onChange?.(arr); }
+        };
         const input = el('input', {
             type: 'text', placeholder,
             style: { background: 'transparent', border: '0', outline: 'none', flex: '1 0 140px', padding: '6px 4px', minHeight: '36px' },
             onkeydown: (e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' || e.key === ',') {
                     e.preventDefault();
-                    const v = input.value.trim();
-                    if (v) { arr.push(v); rerender(); onChange?.(arr); }
+                    commit();
                 } else if (e.key === 'Backspace' && !input.value && arr.length) {
                     arr.pop(); rerender(); onChange?.(arr);
                 }
-            }
+            },
+            onblur: () => { commit(); }
         });
         container.appendChild(input);
         // refocus when user added an item
