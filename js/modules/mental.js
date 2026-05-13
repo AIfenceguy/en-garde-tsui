@@ -93,7 +93,7 @@ export async function mountMental(root) {
     function toggleRow(id, label, defaultVal) {
         const cb = el('input', { type: 'checkbox', checked: !!defaultVal });
         const wrap = el('label', {
-            style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'var(--ink-3)', borderRadius: '8px', marginBottom: '6px', cursor: 'pointer' }
+            style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'var(--ink-3)', color: '#f5f5f7', borderRadius: '8px', marginBottom: '6px', cursor: 'pointer' }
         }, [cb, el('span', {}, [label])]);
         wrap._cb = cb;
         return wrap;
