@@ -2003,9 +2003,7 @@ input[name="sets"]:focus {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    max-height: 580px;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    /* Page-scroll, not panel-scroll — show ALL ranked fencers inline */
 }
 .nat-row {
     display: flex;
