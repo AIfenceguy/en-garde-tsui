@@ -242,10 +242,10 @@ export async function mountOpponentDetail(root, params) {
     }
 
     const cur = swot || { strengths: [], weaknesses: [], opportunities: [], threats: [] };
-    const sEditor = chipArrayEditor({ values: cur.strengths || [], onChange: () => debouncedSwot() });
-    const wEditor = chipArrayEditor({ values: cur.weaknesses || [], onChange: () => debouncedSwot() });
-    const oEditor = chipArrayEditor({ values: cur.opportunities || [], onChange: () => debouncedSwot() });
-    const tEditor = chipArrayEditor({ values: cur.threats || [], onChange: () => debouncedSwot() });
+    const sEditor = chipArrayEditor({ values: cur.strengths || [], onChange: () => debouncedSwot(), placeholder: 'what HE\'S good at — e.g. fast lunge, beat-attack' });
+    const wEditor = chipArrayEditor({ values: cur.weaknesses || [], onChange: () => debouncedSwot(), placeholder: 'what HE struggles with — e.g. slow recover, weak parry' });
+    const oEditor = chipArrayEditor({ values: cur.opportunities || [], onChange: () => debouncedSwot(), placeholder: 'what I CAN do — e.g. attack-in-prep, counter on his push' });
+    const tEditor = chipArrayEditor({ values: cur.threats || [], onChange: () => debouncedSwot(), placeholder: 'what HE does that scores on me — e.g. flick to back' });
 
     const swotSection = el('div', { class: 'section' }, [
         el('div', { class: 'section-head' }, [
