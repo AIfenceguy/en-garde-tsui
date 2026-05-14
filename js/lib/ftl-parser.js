@@ -21,12 +21,22 @@ const SCORE_GRID_HEADER_RE = /^[\d\t \s]+V[\t \s]+V\s*\/\s*M[\t \s]+TS[\t \s]+TR
 const REFEREE_RE = /^Referee\(?s?\)?$/i;
 const FOOTER_RE = /(copyright|fencingtime\.com|terms of use|privacy policy|fencingtimelive)/i;
 
-// Name = ALL-CAPS lastname (1+ words) + capitalized firstname (1+ words)
-// Allows: LEE Abin, VARIDIREDDY Suhan, BADROEL RIZWAN Uzair, MARTIN IV Elmer D.
-// Also handles optional DE seed prefix like "(1) WEI Winston" or "(27T) TSUI Raedyn Ho Hin"
-const NAME_RE = /^(?:\(\d+T?\)\s+)?[A-Z][A-Z\-' ]{1,}\s+[A-Z][a-zA-Z\-'. ]+$/;
+// Name = ALL-CAPS-ish surname (1+ words) + given name (1+ words, any case).
+// Per CLAUDE.md hard rule #7: name matching is case-insensitive — never reject
+// a name because of casing. FTL/USFA publishes "WANG sicheng", "LEPAROUX Jean",
+// "MARTIN IV Elmer D.", "O'Sullivan", "de la Vega", "BADROEL RIZWAN Uzair".
+// Optional DE seed prefix "(1) WEI Winston" or "(27T) TSUI Raedyn Ho Hin".
+//
+// Strategy: lastname must be a 2+ letter token that starts with a capital and
+// contains mostly caps (allow mixed case like "EL BATTI" or "de la Vega"),
+// firstname is a 1+ letter token starting with any letter (upper OR lower).
+const NAME_RE = /^(?:\(\d+T?\)\s+)?[A-Za-z][A-Za-z\-'. ]{1,}\s+[A-Za-z][a-zA-Z\-'. ]+$/;
 const SEED_PREFIX_RE = /^\((\d+T?)\)\s+/;
 const DE_TABLEAU_RE = /Table\s+of\s+\d+/i;
+
+// Surname token must have at least one uppercase character (USFA convention)
+// to avoid false positives on prose lines like "On strip A1" or "Pool details".
+const SURNAME_HAS_UPPER_RE = /^[^a-zA-Z]*[A-Z]/;
 
 export function parseFtlText(text) {
     if (!text || typeof text !== 'string') return emptyResult();
@@ -138,10 +148,42 @@ function emptyResult() { return { pools: [], fencers: [], bouts: {}, des: [] }; 
 function looksLikeName(s) {
     if (!s) return false;
     if (!NAME_RE.test(s)) return false;
-    // Heuristic: reject if it's clearly a noun phrase
-    const lower = s.toLowerCase();
-    if (/^(pool|round|tableau|event|venue|location|tournament|fencing|status|name|club|rating|rank|date|time|results|standings)\b/.test(lower)) return false;
+    // Strip optional seed prefix before further checks
+    const stripped = s.replace(SEED_PREFIX_RE, '').trim();
+    // Surname must contain at least one uppercase letter (avoids false positives
+    // on prose lines like "Pool details" or "On strip A1")
+    const firstToken = stripped.split(/\s+/)[0] || '';
+    if (!SURNAME_HAS_UPPER_RE.test(firstToken)) return false;
+    // Heuristic noun-phrase rejection (case-insensitive — per CLAUDE.md #7)
+    const lower = stripped.toLowerCase();
+    if (/^(pool|round|tableau|event|venue|location|tournament|fencing|status|name|club|rating|rank|date|time|results|standings|sport|round of)\b/.test(lower)) return false;
     return true;
+}
+
+// Public: normalize a fencer name for case-insensitive comparison/dedupe.
+// "WANG sicheng" / "Wang Sicheng" / "wang sicheng" → "wang sicheng"
+// "(27T) TSUI Raedyn Ho Hin" → "tsui raedyn ho hin"
+// "O'Sullivan, Brendan" → "osullivan brendan"
+export function normalizeName(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(SEED_PREFIX_RE, '')       // strip "(1) " or "(27T) "
+        .toLowerCase()
+        .replace(/[^a-z\s]/g, ' ')          // drop punctuation
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// Public: case-insensitive equality check on fencer names
+export function namesMatch(a, b) {
+    return normalizeName(a) === normalizeName(b);
+}
+
+// Public: case-insensitive "name contains lastname" check (for finding a user
+// in a pasted roster — "TSUI Raedyn Ho Hin" should match a search for "Tsui")
+export function nameContains(haystack, needle) {
+    if (!haystack || !needle) return false;
+    return normalizeName(haystack).includes(normalizeName(needle));
 }
 
 function splitClubBlob(blob) {

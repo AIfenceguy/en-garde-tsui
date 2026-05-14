@@ -19,7 +19,7 @@ import {
 } from '../lib/db.js';
 import { safeWrite } from '../lib/offline.js';
 import { getIntel } from '../lib/fencer-intel.js';
-import { parseFtlText } from '../lib/ftl-parser.js';
+import { parseFtlText, normalizeName } from '../lib/ftl-parser.js';
 
 export async function mountTournamentDay(root, params) {
     const profile = activeProfile();
@@ -491,8 +491,11 @@ export async function mountTournamentDay(root, params) {
                 toast('Need at least 3 fencers — try copying more of the page', 'error');
                 return false;
             }
-            // Inject "me" at top if not there
-            const lastName = profile.name.toLowerCase().split(' ')[0];
+            // Inject "me" at top if not there — case-INSENSITIVE matching per CLAUDE.md #7
+            const meNorm = normalizeName(profile.name);
+            const meLastTokens = meNorm.split(' ').filter(Boolean);
+            const meLastName = meLastTokens[meLastTokens.length - 1] || meLastTokens[0] || '';
+            const meFirstName = meLastTokens[0] || '';
             const fencersOut = fencers.map(f => ({
                 name: f.name,
                 club: f.club,
@@ -500,7 +503,12 @@ export async function mountTournamentDay(root, params) {
                 archetypes: [],
                 intel: null
             }));
-            const meAt = fencersOut.findIndex(f => f.name.toLowerCase().includes(lastName));
+            const meAt = fencersOut.findIndex(f => {
+                const fNorm = normalizeName(f.name);
+                // Match if any token of the user's name appears in the candidate's normalized form
+                return (meLastName && fNorm.includes(meLastName)) ||
+                       (meFirstName && fNorm.includes(meFirstName));
+            });
             if (meAt > 0) {
                 const me = fencersOut.splice(meAt, 1)[0];
                 fencersOut.unshift(me);
