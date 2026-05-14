@@ -21,6 +21,10 @@ import { safeWrite } from '../lib/offline.js';
 import { getIntel } from '../lib/fencer-intel.js';
 import { parseFtlText, parseFtlDETableau, normalizeName } from '../lib/ftl-parser.js';
 
+// FTL live-data proxy (Cloudflare Worker). Deployed under Ricky's CF account.
+// All comparisons in this module are case-INSENSITIVE per CLAUDE.md rule #7.
+const FTL_WORKER_URL = 'https://ftl-proxy.rtsui-jlconcepts.workers.dev';
+
 export async function mountTournamentDay(root, params) {
     const profile = activeProfile();
     if (!profile) return root.appendChild(el('div', { class: 'empty' }, ['Pick a profile.']));
@@ -83,9 +87,7 @@ export async function mountTournamentDay(root, params) {
             }, ['📋 Paste from FTL']),
             el('button', {
                 class: 'btn btn-primary btn-sm',
-                disabled: true,
-                title: 'Cloudflare Worker not configured yet',
-                onclick: () => toast('Live FTL fetch — set up the Worker (see TOURNAMENT_DAY_WORKER.md) to enable.', 'info')
+                onclick: () => getLiveData()
             }, ['🔴 Get live data'])
         ]));
     }
@@ -376,8 +378,23 @@ export async function mountTournamentDay(root, params) {
                 status === 'completed' ? (de.won ? 'VICTORY' : 'DEFEAT') :
                 status === 'pending' ? 'NEXT BOUT' : 'IF YOU WIN';
             const cls = 'td-de-card td-de-' + status + (status === 'completed' ? (de.won ? ' win' : ' loss') : '');
+            const deRef = de;  // capture for closure
             const card = el('div', { class: cls }, [
-                el('div', { class: 'td-de-round' }, [`Round of ${de.round}`]),
+                el('div', { class: 'td-de-head' }, [
+                    el('div', { class: 'td-de-round' }, [`Round of ${de.round}`]),
+                    el('button', {
+                        type: 'button',
+                        class: 'td-de-del',
+                        title: 'Remove this DE bout',
+                        onclick: () => {
+                            if (!confirm(`Remove "Round of ${deRef.round} vs ${deRef.oppName}"?\n\nThis only removes the local card. Already-saved bouts in BOUTS aren't touched.`)) return;
+                            pool.des = pool.des.filter(x => !(x.round === deRef.round && (x.oppName || '') === (deRef.oppName || '')));
+                            savePoolToCache(tournament.id, pool);
+                            toast('DE bout removed');
+                            render();
+                        }
+                    }, ['×'])
+                ]),
                 el('div', { class: 'td-de-pair' }, [
                     el('strong', {}, [profile.name]),
                     el('span', { class: 'td-de-score' }, [score]),
@@ -387,6 +404,75 @@ export async function mountTournamentDay(root, params) {
                 de.oppClub ? el('div', { class: 'td-de-meta' }, [de.oppClub + (de.oppRating ? ' · ' + de.oppRating : '')]) : null
             ].filter(Boolean));
             parent.appendChild(card);
+        }
+    }
+
+    // Get-Live-Data — pulls competitor roster from FTL via the Cloudflare Worker.
+    // All string comparisons here are case-INSENSITIVE per CLAUDE.md rule #7.
+    async function getLiveData() {
+        const tName = (tournament.name || '').toLowerCase();
+        toast('🔴 Pulling live data from FTL…', 'info');
+        try {
+            // Step 1: health check
+            const h = await fetch(`${FTL_WORKER_URL}/health`).then(r => r.json());
+            if (!h.logged_in) {
+                toast('FTL session expired — refresh cookies via Cookie-Editor + wrangler secret put', 'error');
+                return;
+            }
+            // Step 2: find tournament (case-insensitive name match)
+            const tourResp = await fetch(`${FTL_WORKER_URL}/tournaments?period=last30`).then(r => r.json());
+            const matches = (tourResp.tournaments || []).filter(t =>
+                (t.name || '').toLowerCase().includes(tName) ||
+                tName.includes((t.name || '').toLowerCase())
+            );
+            if (!matches.length) {
+                toast(`No FTL tournament matches "${tournament.name}". Check tournament name.`, 'error');
+                return;
+            }
+            const ftlTour = matches[0];
+            // Step 3: find event for this profile's role (case-insensitive)
+            const evResp = await fetch(`${FTL_WORKER_URL}/events?tid=${ftlTour.id}`).then(r => r.json());
+            const events = evResp.events || [];
+            // Match Cadet MF for Raedyn, Y12 MF for Kaylan, Y14 MF as fallback
+            const eventKeyPrefs = profile.role === 'kaylan'
+                ? ['y-12 men', 'y12 men', 'youth 12 men']
+                : ['cadet men', 'y-14 men', 'y14 men', 'youth 14 men'];
+            let event = null;
+            for (const pref of eventKeyPrefs) {
+                event = events.find(e => (e.name || '').toLowerCase().includes(pref) && (e.name || '').toLowerCase().includes('foil'));
+                if (event) break;
+            }
+            if (!event) {
+                toast(`No matching event for ${profile.name} in ${ftlTour.name}`, 'error');
+                console.log('Events found:', events.map(e => e.name));
+                return;
+            }
+            // Step 4: pull competitor list, locate the user
+            const cResp = await fetch(`${FTL_WORKER_URL}/event/competitors?eid=${event.id}`).then(r => r.json());
+            const comps = cResp.competitors || [];
+            const myTokens = normalizeName(profile.name).split(' ').filter(t => t.length >= 3);
+            const me = comps.find(c => {
+                const n = (c.name || '').toLowerCase();
+                return myTokens.some(t => n.includes(t));
+            });
+            if (!me) {
+                toast(`${profile.name} not in roster for ${event.name}`, 'error');
+                return;
+            }
+            toast(`✓ ${ftlTour.name} → ${event.name} → ${profile.name} (#${me.rank || '-'}) in ${comps.length}-fencer roster`, 'info');
+            // Save metadata into pool state for display
+            pool.live = {
+                tournamentName: ftlTour.name,
+                eventName: event.name,
+                eventId: event.id,
+                rosterSize: comps.length,
+                me: { name: me.name, club: me.club1, rating: me.rating, rank: me.rank }
+            };
+            savePoolToCache(tournament.id, pool);
+            render();
+        } catch (e) {
+            console.warn('getLiveData fail', e);
+            toast('Live-data fetch failed: ' + (e.message || e), 'error');
         }
     }
 
