@@ -12,7 +12,7 @@
 // bout-loss-rate can be computed live from logged data.
 const WEAKNESS_PROFILE = {
     raedyn: ['counter', 'unpredictable', 'aggressive'],
-    kaylan: ['counter', 'unpredictable']
+    kaylan: ['counter', 'unpredictable', 'aggressive']
 };
 
 const DRILL_BANK = {
