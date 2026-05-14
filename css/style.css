@@ -2216,6 +2216,30 @@ input[name="sets"]:focus {
 .td-paste-empty { color: var(--ink-faint); font-style: italic; font-size: 13px; margin: 8px 0; }
 .td-paste-more { color: var(--ink-mute); font-style: italic; font-size: 12px; margin-top: 6px; }
 
+/* Multi-pool picker cards */
+.td-paste-pool-card {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: #fff;
+    border: 2px solid var(--rule);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin: 6px 0;
+    cursor: pointer;
+    transition: all 140ms ease;
+    color: var(--ink);
+}
+.td-paste-pool-card:hover { border-color: var(--eg-primary, #2B6BFF); background: rgba(43,107,255,0.04); }
+.td-paste-pool-card.selected { border-color: var(--eg-primary, #2B6BFF); background: rgba(43,107,255,0.08); box-shadow: 0 2px 8px rgba(43,107,255,0.12); }
+.td-paste-pool-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.td-paste-pool-num { font-family: var(--eg-mono, monospace); font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: var(--eg-primary, #2B6BFF); }
+.td-paste-pool-strip { font-family: var(--eg-mono, monospace); font-size: 10.5px; color: var(--ink-mute); }
+.td-paste-pool-count { margin-left: auto; font-family: var(--eg-mono, monospace); font-size: 10.5px; color: var(--ink-mute); }
+.td-paste-pool-roster { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.td-paste-pool-name { font-size: 12.5px; color: var(--ink); }
+.td-paste-pool-more { font-size: 11px; color: var(--ink-mute); font-style: italic; }
+
 /* Body + app-root: kill the dark theme remnants — cream-on-cream overscroll
    and the rgba(0,0,0,0.6) bottom radial that put a black band on the
    dashboard. */

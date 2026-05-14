@@ -427,29 +427,90 @@ export async function mountTournamentDay(root, params) {
         const textarea = el('textarea', {
             class: 'td-paste-textarea',
             rows: 12,
-            placeholder: 'Paste here…\n\n• On iPhone Safari: long-press the FTL pool/competitors page → Select All → Copy → tap into this box → Paste.\n• Works on Pool Sheet, Competitors page, or DE Bracket.\n• Don\'t worry about extra junk — the parser ignores headers, nav, and ratings text.\n• You\'ll see a preview before it replaces your current pool.',
+            placeholder: 'Paste here…\n\n• On iPhone Safari: long-press the FTL pool details page → Select All → Copy → tap into this box → Paste.\n• Works whether you paste 1 pool or all 10 — if multiple, you\'ll pick which is your kid\'s.\n• Don\'t worry about scores, referees, Bout Order — the parser strips them.',
             autofocus: true
         });
         const previewArea = el('div', { class: 'td-paste-preview' });
+        let selectedPoolIdx = 0;
+        let lastParsed = null;
 
         function refreshPreview() {
             const parsed = parseFtlText(textarea.value);
+            lastParsed = parsed;
             previewArea.innerHTML = '';
-            if (!parsed || !parsed.fencers || !parsed.fencers.length) {
+
+            // Multi-pool: render pool cards as picker
+            if (parsed.pools && parsed.pools.length > 1) {
+                previewArea.appendChild(el('div', { class: 'td-paste-count' }, [`Detected ${parsed.pools.length} pools — tap the one you're in:`]));
+                for (let i = 0; i < parsed.pools.length; i++) {
+                    const p = parsed.pools[i];
+                    const card = el('button', {
+                        type: 'button',
+                        class: 'td-paste-pool-card' + (i === selectedPoolIdx ? ' selected' : ''),
+                        onclick: () => { selectedPoolIdx = i; refreshPreview(); }
+                    }, [
+                        el('div', { class: 'td-paste-pool-head' }, [
+                            el('span', { class: 'td-paste-pool-num' }, [`POOL #${p.number}`]),
+                            p.strip ? el('span', { class: 'td-paste-pool-strip' }, [`Strip ${p.strip}`]) : null,
+                            el('span', { class: 'td-paste-pool-count' }, [`${p.fencers.length} fencers`])
+                        ].filter(Boolean)),
+                        el('div', { class: 'td-paste-pool-roster' }, p.fencers.slice(0, 3).map(f =>
+                            el('span', { class: 'td-paste-pool-name' }, [f.name])
+                        ).concat(p.fencers.length > 3 ? [el('span', { class: 'td-paste-pool-more' }, [`+${p.fencers.length - 3} more`])] : []))
+                    ]);
+                    previewArea.appendChild(card);
+                }
+                return;
+            }
+
+            // Single pool OR flat fencer list
+            const fencers = (parsed.pools && parsed.pools[0]) ? parsed.pools[0].fencers : parsed.fencers;
+            if (!fencers || !fencers.length) {
                 previewArea.appendChild(el('p', { class: 'td-paste-empty' }, ['No fencers detected yet. Paste pool text above.']));
                 return;
             }
-            previewArea.appendChild(el('div', { class: 'td-paste-count' }, [`Detected ${parsed.fencers.length} fencer${parsed.fencers.length === 1 ? '' : 's'}:`]));
-            for (const f of parsed.fencers.slice(0, 12)) {
+            previewArea.appendChild(el('div', { class: 'td-paste-count' }, [
+                parsed.pools && parsed.pools[0]
+                    ? `Pool #${parsed.pools[0].number} — ${fencers.length} fencers:`
+                    : `Detected ${fencers.length} fencer${fencers.length === 1 ? '' : 's'}:`
+            ]));
+            for (const f of fencers.slice(0, 12)) {
                 previewArea.appendChild(el('div', { class: 'td-paste-row' }, [
                     el('span', { class: 'td-paste-name' }, [f.name]),
                     f.club ? el('span', { class: 'td-paste-club' }, [f.club]) : null,
                     f.rating ? el('span', { class: 'td-paste-rating' }, [f.rating]) : null
                 ].filter(Boolean)));
             }
-            if (parsed.fencers.length > 12) {
-                previewArea.appendChild(el('p', { class: 'td-paste-more' }, [`+ ${parsed.fencers.length - 12} more`]));
+            if (fencers.length > 12) {
+                previewArea.appendChild(el('p', { class: 'td-paste-more' }, [`+ ${fencers.length - 12} more`]));
             }
+        }
+
+        function loadPool(fencers) {
+            if (!fencers || fencers.length < 3) {
+                toast('Need at least 3 fencers — try copying more of the page', 'error');
+                return false;
+            }
+            // Inject "me" at top if not there
+            const lastName = profile.name.toLowerCase().split(' ')[0];
+            const fencersOut = fencers.map(f => ({
+                name: f.name,
+                club: f.club,
+                rating: f.rating || null,
+                archetypes: [],
+                intel: null
+            }));
+            const meAt = fencersOut.findIndex(f => f.name.toLowerCase().includes(lastName));
+            if (meAt > 0) {
+                const me = fencersOut.splice(meAt, 1)[0];
+                fencersOut.unshift(me);
+            } else if (meAt < 0) {
+                fencersOut.unshift({ name: profile.name, club: null, rating: null, archetypes: [], intel: null });
+            }
+            pool = { fencers: fencersOut, myIndex: 0, bouts: {}, des: [] };
+            savePoolToCache(tournament.id, pool);
+            toast(`Loaded ${fencersOut.length} fencers — pool ready`);
+            return true;
         }
 
         textarea.addEventListener('input', refreshPreview);
@@ -463,27 +524,17 @@ export async function mountTournamentDay(root, params) {
         sheetInner.appendChild(el('div', { class: 'td-sheet-actions' }, [
             el('button', { type: 'button', class: 'btn btn-ghost', onclick: close }, ['Cancel']),
             el('button', { type: 'button', class: 'btn btn-primary', onclick: () => {
-                const parsed = parseFtlText(textarea.value);
-                if (!parsed || !parsed.fencers || parsed.fencers.length < 3) {
-                    toast('Need at least 3 fencers — try copying more of the page', 'error');
-                    return;
+                if (!lastParsed) return;
+                let fencers;
+                if (lastParsed.pools && lastParsed.pools.length > 1) {
+                    fencers = lastParsed.pools[selectedPoolIdx]?.fencers || [];
+                } else if (lastParsed.pools && lastParsed.pools.length === 1) {
+                    fencers = lastParsed.pools[0].fencers;
+                } else {
+                    fencers = lastParsed.fencers || [];
                 }
-                // Inject "me" at top if not there
-                const myNorm = profile.name.toLowerCase();
-                const lastName = myNorm.split(' ')[0];
-                const meAt = parsed.fencers.findIndex(f => f.name.toLowerCase().includes(lastName));
-                if (meAt > 0) {
-                    const me = parsed.fencers.splice(meAt, 1)[0];
-                    parsed.fencers.unshift(me);
-                } else if (meAt < 0) {
-                    parsed.fencers.unshift({ name: profile.name, club: null, rating: null });
-                }
-                pool = { fencers: parsed.fencers, myIndex: 0, bouts: parsed.bouts || {}, des: parsed.des || [] };
-                savePoolToCache(tournament.id, pool);
-                toast(`Loaded ${parsed.fencers.length} fencers — pool ready`);
-                close();
-                render();
-            } }, ['Parse & Start Pool →'])
+                if (loadPool(fencers)) { close(); render(); }
+            } }, ['Load this pool →'])
         ]));
         sheet.appendChild(sheetInner);
         document.body.appendChild(sheet);

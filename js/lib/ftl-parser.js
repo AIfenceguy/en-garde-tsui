@@ -1,211 +1,179 @@
-// FTL paste parser — handles real iPhone-Safari "Select All → Copy" output.
+// FTL paste parser — extracts pool ROSTERS (not scores).
+// Handles iPhone Safari "Select All → Copy" output from FTL pool sheets.
 //
-// Recognized inputs:
-//   1. FTL competitors table  (Status, Name, Club, Division, Country, Rating, Rank)
-//   2. FTL pool sheet         (1. NAME CLUB RATING / Pool # headers / scores grid)
-//   3. FTL DE bracket / results (PLACE NAME CLUB RATING)
-//   4. AskFred event roster   (similar shape)
-//   5. Any pasted text where each fencer is on a line with name + optional club + rating
+// FTL pool sheet format (tab-separated):
+//   Pool #N
+//   On strip <X>
+//   1\t2\t3\t...\tV\tV / M\tTS\tTR\tInd        <- column header (ignored)
+//   LEE Abin                                    <- name line
+//   LAIFC / Southern California / USA\t1\t...   <- club + position + scores (we only care about club + position)
+//   ...
+//   Referee(s)                                  <- end-of-pool marker
 //
-// Strategy:
-//   • Split on lines AND tabs (an HTML table copy is usually tab-separated)
-//   • For each row, try to identify name, club, rating using positional heuristics
-//   • Skip headers/navigation/noise rows
-//   • Normalize FTL ratings "A2026" → "A26"
-//
-// Returns: { fencers: [{name, club, rating}], bouts: {}, des: [] }
+// Returns:
+//   { pools: [{ number, strip, fencers: [{position, name, club, country}] }],
+//     fencers: <first pool's roster, for back-compat>,
+//     bouts: {}, des: [] }
 
-const NOISE_RE = /^(status|name|club|club\(s\)|division|country|rating|rank|place|earned|qualified for|date|time|sport|event|finished|started|format|pool|round|tableau|results|standings|teams|teams scheduled|checked in|registered|withdrew|my account|log out|sign in|advanced search|home|tournaments|search|next|previous|view all|all|usa|fie|local|national|regional|fencing time|fencingtimelive|english.*|toggle|menu)$/i;
+const POOL_HEADER_RE = /^Pool\s*#?\s*(\d+)/i;
+const STRIP_RE = /^On\s+strip\s+(\S+)/i;
+const SCORE_GRID_HEADER_RE = /^[\d\t \s]+V[\t \s]+V\s*\/\s*M[\t \s]+TS[\t \s]+TR[\t \s]+Ind\s*$/i;
+const REFEREE_RE = /^Referee\(?s?\)?$/i;
+const FOOTER_RE = /(copyright|fencingtime\.com|terms of use|privacy policy|fencingtimelive)/i;
 
-const STATUS_WORDS = /^(checked\s*in|registered|withdrew|scratch(ed)?|present|absent|invited|on\s*deck)$/i;
-
-// FTL rating: A2026, B2026, etc. — also B25, A26 short forms. Plus U (unrated).
-const RATING_RE = /\b([A-EUu])\s?(\d{2,4})\b/;
-
-// "Position" like "1.", "2)", "#3", "4 -"
-const POSITION_RE = /^\s*#?(\d+)\s*[\.\):\-]*\s*/;
-
-// "#7" rank style
-const RANK_HASH_RE = /^#\d+$/;
+// Name = ALL-CAPS lastname (1+ words) + capitalized firstname (1+ words)
+// Allows: LEE Abin, VARIDIREDDY Suhan, BADROEL RIZWAN Uzair, MARTIN IV Elmer D.
+// Also handles optional DE seed prefix like "(1) WEI Winston" or "(27T) TSUI Raedyn Ho Hin"
+const NAME_RE = /^(?:\(\d+T?\)\s+)?[A-Z][A-Z\-' ]{1,}\s+[A-Z][a-zA-Z\-'. ]+$/;
+const SEED_PREFIX_RE = /^\((\d+T?)\)\s+/;
+const DE_TABLEAU_RE = /Table\s+of\s+\d+/i;
 
 export function parseFtlText(text) {
-    if (!text || typeof text !== 'string') return { fencers: [], bouts: {}, des: [] };
+    if (!text || typeof text !== 'string') return emptyResult();
+    const lines = text.split(/\r?\n/);
 
-    const rawLines = text.split(/\r?\n/).map(l => l.replace(/ /g, ' ').trim()).filter(Boolean);
+    const pools = [];
+    let currentPool = null;
+    let pendingName = null;
 
-    // Each line may be tab-separated (table copy) or space-separated.
-    // Try both interpretations and pick whichever yields more fencers.
-    const fromTabs = parseAsTabular(rawLines, /\t+/);
-    const fromMultiSpace = parseAsTabular(rawLines, / {2,}/);
-    const fromHeuristic = parseAsHeuristic(rawLines);
+    for (const rawLine of lines) {
+        const line = rawLine.replace(/ /g, ' '); // nbsp → space
+        const stripped = line.trim();
+        if (!stripped) continue;
 
-    const candidates = [fromTabs, fromMultiSpace, fromHeuristic];
-    candidates.sort((a, b) => b.length - a.length);
-    const fencers = dedupe(candidates[0]);
+        // Pool boundary
+        const poolM = stripped.match(POOL_HEADER_RE);
+        if (poolM) {
+            currentPool = { number: parseInt(poolM[1], 10), strip: null, fencers: [] };
+            pools.push(currentPool);
+            pendingName = null;
+            continue;
+        }
 
-    return { fencers, bouts: {}, des: [] };
-}
+        // Strip
+        const stripM = stripped.match(STRIP_RE);
+        if (stripM && currentPool) {
+            currentPool.strip = stripM[1];
+            continue;
+        }
 
-function dedupe(fencers) {
-    const seen = new Set();
-    const out = [];
-    for (const f of fencers) {
-        const key = (f.name || '').toLowerCase().replace(/[^a-z]/g, '');
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        out.push(f);
+        // Column header row (numbers + V V/M TS TR Ind) — ignore
+        if (SCORE_GRID_HEADER_RE.test(stripped) || /^(1\s+2\s+3|1\t2\t3)/.test(stripped)) {
+            pendingName = null;
+            continue;
+        }
+        // Referee section ends a pool's fencer block
+        if (REFEREE_RE.test(stripped)) {
+            pendingName = null;
+            continue;
+        }
+        if (FOOTER_RE.test(stripped)) {
+            pendingName = null;
+            continue;
+        }
+
+        // Name line — only valid inside a pool
+        if (looksLikeName(stripped) && currentPool && !line.includes('\t')) {
+            pendingName = stripped;
+            continue;
+        }
+
+        // Data line: must have tabs + a position number
+        if (pendingName && currentPool && line.includes('\t')) {
+            const cells = line.split('\t').map(c => c.trim());
+            if (cells.length >= 3) {
+                const positionStr = cells[1] || '';
+                const position = parseInt(positionStr, 10);
+                if (Number.isInteger(position) && position >= 1 && position <= 9) {
+                    const clubBlob = cells[0] || '';
+                    const { club, country } = splitClubBlob(clubBlob);
+                    currentPool.fencers.push({
+                        position,
+                        name: pendingName,
+                        club,
+                        country
+                    });
+                    pendingName = null;
+                    continue;
+                }
+            }
+            // Data line we couldn't parse — clear pending
+            pendingName = null;
+            continue;
+        }
+
+        // Anything else clears the pending name
+        if (!looksLikeName(stripped)) pendingName = null;
     }
-    return out;
+
+    // Sort each pool's fencers by position
+    for (const p of pools) {
+        p.fencers.sort((a, b) => a.position - b.position);
+    }
+
+    // If no pool blocks found, fall back to flat heuristic
+    if (!pools.length) {
+        const flat = heuristicFlatParse(lines);
+        return { pools: [], fencers: flat, bouts: {}, des: [] };
+    }
+
+    // Backward-compat: flatten the first pool's fencers into top-level
+    const flatFencers = pools[0].fencers.map(f => ({
+        name: f.name,
+        club: f.club,
+        rating: null  // FTL pool sheet doesn't include ratings per fencer
+    }));
+
+    return {
+        pools,
+        fencers: flatFencers,
+        bouts: {},
+        des: [],
+        multiPool: pools.length > 1
+    };
 }
 
-function isNoise(s) {
-    if (!s) return true;
-    const t = s.trim();
-    if (t.length < 2) return true;
-    if (NOISE_RE.test(t)) return true;
-    if (/^\d+$/.test(t)) return true;         // bare number
-    if (RANK_HASH_RE.test(t)) return true;    // "#7"
-    return false;
-}
+function emptyResult() { return { pools: [], fencers: [], bouts: {}, des: [] }; }
 
 function looksLikeName(s) {
     if (!s) return false;
-    const t = s.trim();
-    if (t.length < 3) return false;
-    if (!/[A-Za-z]/.test(t)) return false;
-    if (NOISE_RE.test(t)) return false;
-    if (STATUS_WORDS.test(t)) return false;
-    if (/^\d+(\.\d+)?$/.test(t)) return false;
-    // Should have at least one letter and either: 2+ words, or all-caps lastname (FTL convention)
-    const words = t.split(/\s+/);
-    if (words.length === 1 && !/^[A-Z]{2,}$/.test(t)) return false;
+    if (!NAME_RE.test(s)) return false;
+    // Heuristic: reject if it's clearly a noun phrase
+    const lower = s.toLowerCase();
+    if (/^(pool|round|tableau|event|venue|location|tournament|fencing|status|name|club|rating|rank|date|time|results|standings)\b/.test(lower)) return false;
     return true;
 }
 
-function normalizeRating(s) {
-    if (!s) return null;
-    const m = String(s).match(RATING_RE);
-    if (!m) return null;
-    let yr = m[2];
-    // FTL gives "A2026" — keep last 2 digits as "26"
-    if (yr.length === 4) yr = yr.slice(-2);
-    return (m[1].toUpperCase() + yr).toUpperCase();
+function splitClubBlob(blob) {
+    // "LAIFC / Southern California /  USA"  →  club: "LAIFC", country: "USA"
+    // "LAIFC /  CHN"                        →  club: "LAIFC", country: "CHN"
+    // " MEX"                                →  club: null, country: "MEX"
+    const parts = blob.split('/').map(p => p.trim()).filter(Boolean);
+    if (!parts.length) return { club: null, country: null };
+    // 3-letter all-caps token at end = country
+    const last = parts[parts.length - 1];
+    const country = /^[A-Z]{3}$/.test(last) ? last : null;
+    const clubParts = country ? parts.slice(0, -1) : parts;
+    // First part = club abbreviation (most useful)
+    const club = clubParts.length ? clubParts.join(' / ') : null;
+    return { club, country };
 }
 
-function pluckRating(s) {
-    if (!s) return { text: s, rating: null };
-    const m = s.match(RATING_RE);
-    if (!m) return { text: s, rating: null };
-    const yr = m[2].length === 4 ? m[2].slice(-2) : m[2];
-    return {
-        text: s.replace(RATING_RE, '').replace(/\s+/g, ' ').trim(),
-        rating: (m[1].toUpperCase() + yr).toUpperCase()
-    };
-}
-
-// ============= STRATEGY 1: TABULAR (tab- or multi-space-separated) ==============
-function parseAsTabular(lines, sep) {
-    const rows = lines.map(l => l.split(sep).map(c => c.trim()).filter(Boolean));
-    if (!rows.length) return [];
-
-    // Find header row — has multiple known column names
-    let headerRow = -1;
-    let columnOrder = null;
-    for (let i = 0; i < Math.min(rows.length, 10); i++) {
-        const lower = rows[i].map(c => c.toLowerCase());
-        const has = (...words) => words.every(w => lower.some(l => l.includes(w)));
-        if (has('name') && (has('club') || has('rating') || has('division'))) {
-            headerRow = i;
-            columnOrder = lower;
-            break;
-        }
-    }
-
+// Fallback for non-pool-sheet pastes (legacy paths)
+function heuristicFlatParse(lines) {
     const out = [];
-    const dataRows = headerRow >= 0 ? rows.slice(headerRow + 1) : rows;
-    for (const cells of dataRows) {
-        if (cells.length < 2) continue;
-        // Skip rows that are clearly noise (single cell, all numbers, etc.)
-        if (cells.every(c => isNoise(c))) continue;
-        const fencer = extractFencerFromCells(cells, columnOrder);
-        if (fencer && looksLikeName(fencer.name)) out.push(fencer);
-    }
-    return out;
-}
-
-function extractFencerFromCells(cells, header) {
-    // If we have a header, use it to find column positions
-    if (header) {
-        const idxOf = (...words) => header.findIndex(h => words.some(w => h.includes(w)));
-        const nameI = idxOf('name');
-        const clubI = idxOf('club');
-        const ratingI = idxOf('rating');
-        const name = nameI >= 0 ? cells[nameI] : null;
-        if (!name || !looksLikeName(name)) return null;
-        return {
-            name: cleanName(name),
-            club: clubI >= 0 ? (cells[clubI] || null) : null,
-            rating: ratingI >= 0 ? normalizeRating(cells[ratingI]) : null
-        };
-    }
-    // No header — heuristic
-    // Strip leading status word ("Checked In") and trailing rank ("#7")
-    let filtered = cells.filter(c => !STATUS_WORDS.test(c) && !RANK_HASH_RE.test(c));
-    if (!filtered.length) return null;
-    // First name-like cell = name
-    const nameCell = filtered.find(looksLikeName);
-    if (!nameCell) return null;
-    // Look for rating cell
-    let rating = null, clubGuess = null;
-    for (const c of filtered) {
-        if (c === nameCell) continue;
-        const m = c.match(RATING_RE);
-        if (m && !rating && c.length <= 8) {
-            rating = normalizeRating(c);
-            continue;
-        }
-        if (looksLikeName(c)) continue; // probably another fencer accidentally on same line
-        if (!clubGuess && c.length >= 3 && c.length < 80 && /[A-Za-z]/.test(c)) {
-            clubGuess = c;
-        }
-    }
-    return {
-        name: cleanName(nameCell),
-        club: clubGuess,
-        rating
-    };
-}
-
-function cleanName(s) {
-    return String(s || '').replace(/\s+/g, ' ').replace(POSITION_RE, '').trim();
-}
-
-// ============ STRATEGY 2: HEURISTIC LINE-BY-LINE =============
-function parseAsHeuristic(lines) {
-    const out = [];
+    const seen = new Set();
     for (const raw of lines) {
-        if (isNoise(raw)) continue;
-        // Try to peel position prefix
-        const noPos = raw.replace(POSITION_RE, '').trim();
-        if (noPos.length < 4) continue;
-        // Pluck rating
-        const { text: nameAndClub, rating } = pluckRating(noPos);
-        // Split name vs club at "·", "•", "—", "–", " - ", multiple spaces
-        const parts = nameAndClub.split(/\s+[·•—–-]\s+|  +|\t+/).map(p => p.trim()).filter(Boolean);
-        let name, club = null;
-        if (parts.length >= 2) {
-            name = parts[0];
-            club = parts.slice(1).join(' · ');
-        } else {
-            // Maybe "LASTNAME Firstname Club" — split by first transition from ALL CAPS to Mixed
-            const m = nameAndClub.match(/^([A-Z][A-Z\-']+(?:\s+[A-Z][A-Z\-']+)*\s+[A-Z][a-zA-Z\-']+(?:\s+[A-Z][a-zA-Z\-']+)*)\s+(.+)$/);
-            if (m) { name = m[1]; club = m[2]; }
-            else name = nameAndClub;
+        const s = raw.trim();
+        if (!s) continue;
+        if (POOL_HEADER_RE.test(s) || REFEREE_RE.test(s) || FOOTER_RE.test(s)) continue;
+        if (SCORE_GRID_HEADER_RE.test(s)) continue;
+        if (looksLikeName(s)) {
+            const key = s.toLowerCase().replace(/\s+/g, '');
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ name: s, club: null, rating: null });
         }
-        if (!looksLikeName(name)) continue;
-        // Filter out status words that snuck through
-        if (STATUS_WORDS.test(name)) continue;
-        out.push({ name: cleanName(name), club: club || null, rating });
     }
     return out;
 }
