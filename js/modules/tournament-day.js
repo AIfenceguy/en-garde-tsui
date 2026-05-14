@@ -422,27 +422,74 @@ export async function mountTournamentDay(root, params) {
     }
 
     function openPasteModal() {
-        const text = prompt('Paste pool/DE/tableau text from FTL (or anywhere — the parser is forgiving):');
-        if (!text) return;
-        const parsed = parseFtlText(text);
-        if (!parsed || !parsed.fencers || parsed.fencers.length < 3) {
-            toast('Could not parse — need at least 3 fencers detected', 'error');
-            console.log('[parser] raw output:', parsed);
-            return;
+        const sheet = el('div', { class: 'td-sheet-bg', onclick: (e) => { if (e.target.classList.contains('td-sheet-bg')) close(); } });
+        const sheetInner = el('div', { class: 'td-sheet td-paste-sheet' });
+        const textarea = el('textarea', {
+            class: 'td-paste-textarea',
+            rows: 12,
+            placeholder: 'Paste here…\n\n• On iPhone Safari: long-press the FTL pool/competitors page → Select All → Copy → tap into this box → Paste.\n• Works on Pool Sheet, Competitors page, or DE Bracket.\n• Don\'t worry about extra junk — the parser ignores headers, nav, and ratings text.\n• You\'ll see a preview before it replaces your current pool.',
+            autofocus: true
+        });
+        const previewArea = el('div', { class: 'td-paste-preview' });
+
+        function refreshPreview() {
+            const parsed = parseFtlText(textarea.value);
+            previewArea.innerHTML = '';
+            if (!parsed || !parsed.fencers || !parsed.fencers.length) {
+                previewArea.appendChild(el('p', { class: 'td-paste-empty' }, ['No fencers detected yet. Paste pool text above.']));
+                return;
+            }
+            previewArea.appendChild(el('div', { class: 'td-paste-count' }, [`Detected ${parsed.fencers.length} fencer${parsed.fencers.length === 1 ? '' : 's'}:`]));
+            for (const f of parsed.fencers.slice(0, 12)) {
+                previewArea.appendChild(el('div', { class: 'td-paste-row' }, [
+                    el('span', { class: 'td-paste-name' }, [f.name]),
+                    f.club ? el('span', { class: 'td-paste-club' }, [f.club]) : null,
+                    f.rating ? el('span', { class: 'td-paste-rating' }, [f.rating]) : null
+                ].filter(Boolean)));
+            }
+            if (parsed.fencers.length > 12) {
+                previewArea.appendChild(el('p', { class: 'td-paste-more' }, [`+ ${parsed.fencers.length - 12} more`]));
+            }
         }
-        // Inject "me" at top if not there
-        const myNorm = profile.name.toLowerCase();
-        const meAt = parsed.fencers.findIndex(f => f.name.toLowerCase().includes(myNorm.split(' ')[0]));
-        if (meAt > 0) {
-            const me = parsed.fencers.splice(meAt, 1)[0];
-            parsed.fencers.unshift(me);
-        } else if (meAt < 0) {
-            parsed.fencers.unshift({ name: profile.name, club: null, rating: null });
-        }
-        pool = { fencers: parsed.fencers, myIndex: 0, bouts: parsed.bouts || {}, des: parsed.des || [] };
-        savePoolToCache(tournament.id, pool);
-        toast(`Loaded ${parsed.fencers.length} fencers from paste`);
-        render();
+
+        textarea.addEventListener('input', refreshPreview);
+
+        sheetInner.appendChild(el('div', { class: 'td-sheet-head' }, [
+            el('span', { class: 'td-sheet-eye' }, ['📋 PASTE FROM FTL']),
+            el('button', { type: 'button', class: 'td-sheet-x', onclick: close }, ['×'])
+        ]));
+        sheetInner.appendChild(textarea);
+        sheetInner.appendChild(previewArea);
+        sheetInner.appendChild(el('div', { class: 'td-sheet-actions' }, [
+            el('button', { type: 'button', class: 'btn btn-ghost', onclick: close }, ['Cancel']),
+            el('button', { type: 'button', class: 'btn btn-primary', onclick: () => {
+                const parsed = parseFtlText(textarea.value);
+                if (!parsed || !parsed.fencers || parsed.fencers.length < 3) {
+                    toast('Need at least 3 fencers — try copying more of the page', 'error');
+                    return;
+                }
+                // Inject "me" at top if not there
+                const myNorm = profile.name.toLowerCase();
+                const lastName = myNorm.split(' ')[0];
+                const meAt = parsed.fencers.findIndex(f => f.name.toLowerCase().includes(lastName));
+                if (meAt > 0) {
+                    const me = parsed.fencers.splice(meAt, 1)[0];
+                    parsed.fencers.unshift(me);
+                } else if (meAt < 0) {
+                    parsed.fencers.unshift({ name: profile.name, club: null, rating: null });
+                }
+                pool = { fencers: parsed.fencers, myIndex: 0, bouts: parsed.bouts || {}, des: parsed.des || [] };
+                savePoolToCache(tournament.id, pool);
+                toast(`Loaded ${parsed.fencers.length} fencers — pool ready`);
+                close();
+                render();
+            } }, ['Parse & Start Pool →'])
+        ]));
+        sheet.appendChild(sheetInner);
+        document.body.appendChild(sheet);
+        setTimeout(() => textarea.focus(), 50);
+        refreshPreview();
+        function close() { sheet.remove(); }
     }
 }
 
