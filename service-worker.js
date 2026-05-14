@@ -2,7 +2,7 @@
 // Caches the static shell so the app loads when wifi is bad at venues.
 // Mutations go through the in-app offline queue (lib/offline.js), not the SW.
 
-const SHELL_CACHE = 'en-garde-shell-v50';
+const SHELL_CACHE = 'en-garde-shell-v51';
 const SHELL_FILES = [
     './',
     './index.html',
@@ -24,6 +24,8 @@ const SHELL_FILES = [
     './js/lib/fencer-intel.json',
     './js/lib/coach-ai.js',
     './js/lib/weakness-drills.js',
+    './js/lib/drill-mastery.js',
+    './js/lib/drill-coach.js',
     './js/lib/ftl-parser.js',
     './js/lib/milestones.js',
     './js/lib/avatars.js',

@@ -11,6 +11,7 @@ import {
 import { safeWrite } from '../lib/offline.js';
 import { scaleSlider } from '../lib/chips.js';
 import { getWeaknessDrills } from '../lib/weakness-drills.js';
+import { STAGES, RATINGS, computeStage, listDrillSessions, logDrillSession, tagToSlug } from '../lib/drill-mastery.js';
 
 const CATEGORIES = [
     { slug: 'explosive',    label: 'Explosive' },
@@ -516,6 +517,9 @@ export async function mountPhysical(root) {
             }
         })();
 
+        // Mastery badges — paint async
+        refreshMasteryBadges(profile, panel);
+
         return panel;
     }
 
@@ -523,26 +527,142 @@ export async function mountPhysical(root) {
         if (!plays || !plays.length) return el('div', {}, []);
         return el('div', { class: 'weak-section' }, [
             el('div', { class: 'weak-section-label' }, [label]),
-            ...plays.map(p => el('div', { class: `weak-play weak-play-p${p.priority || 3}` }, [
-                el('div', { class: 'weak-play-head' }, [
-                    el('span', { class: 'weak-play-tag' }, [p.tag]),
-                    p.add_drill ? el('span', { class: 'weak-dose-pill', 'data-dose-slug': p.add_drill }, ['—']) : null
-                ].filter(Boolean)),
-                p.data ? el('div', { class: 'weak-play-data' }, [p.data]) : null,
-                el('div', { class: 'weak-play-row' }, [
-                    el('span', { class: 'weak-play-label' }, ['GAME PLAN']),
-                    el('p', { class: 'weak-play-text' }, [p.game_plan])
-                ]),
-                el('div', { class: 'weak-play-row weak-play-cue' }, [
-                    el('span', { class: 'weak-play-label' }, [kind === 'body' ? 'CUE' : 'IN-LESSON CUE']),
-                    el('p', { class: 'weak-play-text' }, [p.cue])
-                ]),
-                p.add_drill ? el('button', {
-                    type: 'button',
-                    class: 'weak-add-btn',
-                    'data-add-slug': p.add_drill
-                }, ['+ Add to today']) : null
-            ].filter(Boolean)))
+            ...plays.map(p => {
+                const drillSlug = tagToSlug(p.tag);
+                return el('div', { class: `weak-play weak-play-p${p.priority || 3}`, 'data-drill-slug': drillSlug, 'data-weakness-slug': w.slug }, [
+                    el('div', { class: 'weak-play-head' }, [
+                        el('span', { class: 'weak-play-tag' }, [p.tag]),
+                        // Mastery badge — populated async in buildWeaknessPanel
+                        el('span', { class: 'mastery-badge', 'data-mastery-slug': drillSlug, style: 'display:inline-block;margin-left:8px;padding:1px 7px;font-family:var(--eg-mono,monospace);font-size:10px;font-weight:700;letter-spacing:0.06em;background:rgba(107,114,128,0.12);color:#6B7280;border-radius:999px;' }, ['🌱 NEW']),
+                        p.add_drill ? el('span', { class: 'weak-dose-pill', 'data-dose-slug': p.add_drill }, ['—']) : null
+                    ].filter(Boolean)),
+                    p.data ? el('div', { class: 'weak-play-data' }, [p.data]) : null,
+                    el('div', { class: 'weak-play-row' }, [
+                        el('span', { class: 'weak-play-label' }, ['GAME PLAN']),
+                        el('p', { class: 'weak-play-text' }, [p.game_plan])
+                    ]),
+                    el('div', { class: 'weak-play-row weak-play-cue' }, [
+                        el('span', { class: 'weak-play-label' }, [kind === 'body' ? 'CUE' : 'IN-LESSON CUE']),
+                        el('p', { class: 'weak-play-text' }, [p.cue])
+                    ]),
+                    el('div', { style: 'display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;' }, [
+                        el('button', {
+                            type: 'button',
+                            style: 'background:transparent;border:1px solid rgba(43,107,255,0.3);padding:4px 12px;cursor:pointer;font-family:var(--eg-mono,monospace);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#2B6BFF;border-radius:6px;',
+                            onclick: () => openLogModal(p, w, drillSlug)
+                        }, ['+ Log a rep']),
+                        p.add_drill ? el('button', {
+                            type: 'button',
+                            class: 'weak-add-btn',
+                            'data-add-slug': p.add_drill
+                        }, ['+ Add to today']) : null
+                    ].filter(Boolean))
+                ]);
+            })
         ]);
+    }
+
+    // ─── Drill mastery rendering: paint badges from drill_sessions on load ───
+    async function refreshMasteryBadges(profile, root) {
+        try {
+            const sessions = await listDrillSessions(profile.id, { sinceDays: 60 });
+            const byDrill = new Map();
+            for (const s of sessions) {
+                if (!byDrill.has(s.drill_slug)) byDrill.set(s.drill_slug, []);
+                byDrill.get(s.drill_slug).push(s);
+            }
+            const badges = root.querySelectorAll('.mastery-badge');
+            for (const b of badges) {
+                const slug = b.getAttribute('data-mastery-slug');
+                const sList = byDrill.get(slug) || [];
+                const stage = computeStage(sList);
+                b.textContent = `${stage.emoji} ${stage.label.toUpperCase()}`;
+                // Stage colors: dim → green-outline → green-filled → gold-outline → gold-filled
+                const palettes = [
+                    'background:rgba(107,114,128,0.12);color:#6B7280;',
+                    'background:rgba(34,139,34,0.10);color:#1f7a1f;border:1px solid #1f7a1f;',
+                    'background:rgba(34,139,34,0.18);color:#fff;',
+                    'background:rgba(212,160,23,0.15);color:#8a5a07;border:1px solid #8a5a07;',
+                    'background:linear-gradient(180deg,#d4a017,#a37410);color:#fff;'
+                ];
+                const baseStyle = 'display:inline-block;margin-left:8px;padding:2px 8px;font-family:var(--eg-mono,monospace);font-size:10px;font-weight:700;letter-spacing:0.06em;border-radius:999px;';
+                b.setAttribute('style', baseStyle + palettes[stage.idx]);
+                b.setAttribute('title', stage.blurb);
+            }
+        } catch (e) { console.warn('[mastery] badge refresh failed', e); }
+    }
+
+    // ─── Log-a-rep modal ───
+    function openLogModal(play, weakness, drillSlug) {
+        const sheet = el('div', { class: 'td-sheet-bg', onclick: (e) => { if (e.target.classList.contains('td-sheet-bg')) close(); } });
+        const sheetInner = el('div', { class: 'td-sheet', style: 'max-width:480px;' });
+        let reps = 10, rating = 3;
+        const repsLabel = el('span', { style: 'font-family:var(--eg-mono,monospace);font-size:20px;font-weight:700;' }, [String(reps)]);
+        function setReps(n) { reps = Math.max(0, Math.min(99, n)); repsLabel.textContent = String(reps); }
+        const ratingRow = el('div', { style: 'display:flex;gap:6px;justify-content:center;margin:12px 0;' });
+        function paintRating() {
+            ratingRow.querySelectorAll('button[data-rating]').forEach(b => {
+                const v = +b.getAttribute('data-rating');
+                b.style.background = v === rating ? 'rgba(43,107,255,0.18)' : 'transparent';
+                b.style.border = v === rating ? '2px solid #2B6BFF' : '2px solid rgba(0,0,0,0.08)';
+            });
+        }
+        for (const r of RATINGS) {
+            const btn = el('button', {
+                type: 'button',
+                'data-rating': String(r.val),
+                style: 'background:transparent;border:2px solid rgba(0,0,0,0.08);border-radius:10px;padding:8px 6px;cursor:pointer;min-width:54px;font-size:20px;',
+                onclick: () => { rating = r.val; paintRating(); }
+            }, [
+                el('div', {}, [r.emoji]),
+                el('div', { style: 'font-size:9px;font-family:var(--eg-mono,monospace);text-transform:uppercase;letter-spacing:0.04em;color:#6B7280;margin-top:2px;' }, [r.label])
+            ]);
+            ratingRow.appendChild(btn);
+        }
+        const noteInput = el('input', { type: 'text', placeholder: 'note (optional)', style: 'width:100%;padding:8px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;font-size:14px;' });
+
+        sheetInner.appendChild(el('div', { class: 'td-sheet-head' }, [
+            el('span', { class: 'td-sheet-eye' }, ['+ LOG A REP']),
+            el('button', { type: 'button', class: 'td-sheet-x', onclick: close }, ['×'])
+        ]));
+        sheetInner.appendChild(el('div', { style: 'text-align:center;font-size:13px;color:#1A1D24;margin:4px 0 12px;' }, [play.tag]));
+        sheetInner.appendChild(el('div', { style: 'display:flex;align-items:center;justify-content:center;gap:12px;margin:8px 0;' }, [
+            el('button', { type: 'button', style: 'width:42px;height:42px;border-radius:50%;border:1px solid rgba(0,0,0,0.12);background:#fff;font-size:20px;cursor:pointer;', onclick: () => setReps(reps - 1) }, ['−']),
+            el('div', { style: 'min-width:80px;text-align:center;' }, [
+                repsLabel,
+                el('div', { style: 'font-size:10px;font-family:var(--eg-mono,monospace);text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;' }, ['reps'])
+            ]),
+            el('button', { type: 'button', style: 'width:42px;height:42px;border-radius:50%;border:1px solid rgba(0,0,0,0.12);background:#fff;font-size:20px;cursor:pointer;', onclick: () => setReps(reps + 1) }, ['+']),
+            el('button', { type: 'button', style: 'padding:4px 12px;border-radius:6px;border:1px solid rgba(0,0,0,0.12);background:#fff;font-size:11px;font-family:var(--eg-mono,monospace);text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;', onclick: () => setReps(reps + 5) }, ['+5']),
+            el('button', { type: 'button', style: 'padding:4px 12px;border-radius:6px;border:1px solid rgba(0,0,0,0.12);background:#fff;font-size:11px;font-family:var(--eg-mono,monospace);text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;', onclick: () => setReps(reps + 10) }, ['+10'])
+        ]));
+        sheetInner.appendChild(el('div', { style: 'text-align:center;font-size:11px;font-family:var(--eg-mono,monospace);text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin:8px 0 4px;' }, ['quality']));
+        sheetInner.appendChild(ratingRow);
+        sheetInner.appendChild(noteInput);
+        sheetInner.appendChild(el('div', { class: 'td-sheet-actions' }, [
+            el('button', { type: 'button', class: 'btn btn-ghost', onclick: close }, ['Cancel']),
+            el('button', { type: 'button', class: 'btn btn-primary', onclick: async () => {
+                try {
+                    await logDrillSession({
+                        profileId: profile.id,
+                        drillSlug,
+                        weaknessSlug: weakness.slug,
+                        reps,
+                        rating,
+                        note: noteInput.value || null
+                    });
+                    toast('Session logged');
+                    close();
+                    refreshMasteryBadges(profile, document);
+                } catch (e) {
+                    console.warn('log fail', e);
+                    toast('Save failed — try again', 'error');
+                }
+            } }, ['Save'])
+        ]));
+        sheet.appendChild(sheetInner);
+        document.body.appendChild(sheet);
+        paintRating();
+        function close() { sheet.remove(); }
     }
 }

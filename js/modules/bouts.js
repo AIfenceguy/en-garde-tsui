@@ -10,6 +10,8 @@ import { listBouts, getBout, listOpponents, findOrCreateOpponent, loadTaxonomies
 import { chipGroup, tacticTally } from '../lib/chips.js';
 import { safeWrite } from '../lib/offline.js';
 import { boutDebrief, listCoachNotes } from '../lib/coach.js';
+import { getWeaknessDrills } from '../lib/weakness-drills.js';
+import { logDrillSession, tagToSlug } from '../lib/drill-mastery.js';
 
 const CONTEXT_OPTIONS = [
     { value: 'club_open', label: 'Club open fencing' },
@@ -267,6 +269,53 @@ export async function mountBoutEntry(root, params) {
         el('label', { class: 'field-label' }, ['One line']),
         el('input', { type: 'text', name: 'reflection', class: 'field-input', value: editing?.reflection || '', placeholder: 'what I noticed' })
     ]));
+    // SECTION: Drills you used in this bout (Phase 2 — auto-promotes drills to Match-ready on a win)
+    {
+        const profileForChips = (typeof profile !== 'undefined' && profile) ? profile : null;
+        const weaknesses = profileForChips ? getWeaknessDrills(profileForChips.role) : [];
+        const allDrills = [];
+        for (const w of weaknesses) {
+            for (const p of (w.technique || []).concat(w.body || [])) {
+                allDrills.push({ slug: tagToSlug(p.tag), tag: p.tag, weakness: w.slug });
+            }
+        }
+        if (allDrills.length) {
+            form.appendChild(sectionLabel('Drills you used'));
+            const initial = new Set((editing?.tactics_used || []));
+            const tacticsHidden = el('input', { type: 'hidden', name: 'tactics_used', value: Array.from(initial).join(',') });
+            const chipRow = el('div', { class: 'chips', style: 'display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;' });
+            for (const d of allDrills) {
+                const chip = el('button', {
+                    type: 'button',
+                    'data-slug': d.slug,
+                    style: 'background:transparent;border:1px solid rgba(0,0,0,0.12);padding:4px 10px;border-radius:999px;cursor:pointer;font-family:var(--eg-mono,monospace);font-size:11px;letter-spacing:0.04em;color:#6B7280;',
+                    onclick: () => {
+                        const selected = new Set(tacticsHidden.value.split(',').filter(Boolean));
+                        if (selected.has(d.slug)) selected.delete(d.slug);
+                        else selected.add(d.slug);
+                        tacticsHidden.value = Array.from(selected).join(',');
+                        chipRow.querySelectorAll('button').forEach(b => {
+                            const sl = b.getAttribute('data-slug');
+                            const on = selected.has(sl);
+                            b.style.background = on ? 'rgba(34,139,34,0.15)' : 'transparent';
+                            b.style.color = on ? '#1f7a1f' : '#6B7280';
+                            b.style.border = on ? '1px solid #1f7a1f' : '1px solid rgba(0,0,0,0.12)';
+                        });
+                    }
+                }, [d.tag]);
+                if (initial.has(d.slug)) {
+                    chip.style.background = 'rgba(34,139,34,0.15)';
+                    chip.style.color = '#1f7a1f';
+                    chip.style.border = '1px solid #1f7a1f';
+                }
+                chipRow.appendChild(chip);
+            }
+            form.appendChild(el('div', { style: 'font-size:12px;color:#6B7280;margin-bottom:6px;' }, ['Tap any drill whose tactic you actually used — winning bouts auto-promote those drills to 🏆 Match-ready.']));
+            form.appendChild(chipRow);
+            form.appendChild(tacticsHidden);
+        }
+    }
+
     form.appendChild(el('div', { class: 'field' }, [
         el('label', { class: 'field-label' }, ['Coach feedback']),
         el('textarea', { name: 'coach_feedback', class: 'field-textarea', rows: 3, placeholder: 'if any' }, [editing?.coach_feedback || ''])
@@ -313,17 +362,45 @@ export async function mountBoutEntry(root, params) {
             scoring_actions: scoringWidget.getValues(),
             failure_patterns: failureWidget.getValues(),
             reflection: (fd.get('reflection') || '').toString().trim() || null,
-            coach_feedback: (fd.get('coach_feedback') || '').toString().trim() || null
+            coach_feedback: (fd.get('coach_feedback') || '').toString().trim() || null,
+            tactics_used: (fd.get('tactics_used') || '').toString().split(',').filter(Boolean)
         };
 
         try {
+            let savedBoutId = editing?.id || null;
             if (editing) {
                 await safeWrite({ table: 'bouts', op: 'update', payload, match: { id: editing.id } });
                 toast('Bout updated');
             } else {
-                await safeWrite({ table: 'bouts', op: 'insert', payload });
+                const inserted = await safeWrite({ table: 'bouts', op: 'insert', payload });
+                if (inserted && inserted.id) savedBoutId = inserted.id;
                 toast('Bout logged' + (navigator.onLine ? '' : ' (offline — will sync)'));
             }
+            // Auto-promote drills to 🏆 Match-ready when the bout was won AND tactics were tagged.
+            try {
+                if (outcome === 'win' && Array.isArray(payload.tactics_used) && payload.tactics_used.length) {
+                    const weaknesses = getWeaknessDrills(profile.role);
+                    const slugToWeakness = new Map();
+                    for (const w of weaknesses) {
+                        for (const p of (w.technique || []).concat(w.body || [])) {
+                            slugToWeakness.set(tagToSlug(p.tag), w.slug);
+                        }
+                    }
+                    for (const drillSlug of payload.tactics_used) {
+                        const wSlug = slugToWeakness.get(drillSlug);
+                        if (!wSlug) continue;
+                        await logDrillSession({
+                            profileId: profile.id,
+                            drillSlug,
+                            weaknessSlug: wSlug,
+                            reps: 1,
+                            rating: 5,
+                            note: 'used in real bout #coach',
+                            boutId: savedBoutId
+                        }).catch(e => console.warn('drill promo fail', e));
+                    }
+                }
+            } catch (e) { console.warn('promote-drill flow failed', e); }
             go('bouts');
         } catch (e) {
             toast('Save failed: ' + e.message, 'error');
