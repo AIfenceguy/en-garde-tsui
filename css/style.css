@@ -2232,6 +2232,17 @@ input[name="sets"]:focus {
 }
 .td-paste-pool-card:hover { border-color: var(--eg-primary, #2B6BFF); background: rgba(43,107,255,0.04); }
 .td-paste-pool-card.selected { border-color: var(--eg-primary, #2B6BFF); background: rgba(43,107,255,0.08); box-shadow: 0 2px 8px rgba(43,107,255,0.12); }
+.td-paste-pool-card.auto.selected { border-color: var(--eg-gold, #F5B400); background: rgba(245,180,0,0.10); box-shadow: 0 2px 12px rgba(245,180,0,0.20); }
+.td-paste-pool-auto {
+    background: var(--eg-gold, #F5B400);
+    color: #1A1D24;
+    font-family: var(--eg-mono, monospace);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
 .td-paste-pool-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .td-paste-pool-num { font-family: var(--eg-mono, monospace); font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: var(--eg-primary, #2B6BFF); }
 .td-paste-pool-strip { font-family: var(--eg-mono, monospace); font-size: 10.5px; color: var(--ink-mute); }

@@ -427,12 +427,28 @@ export async function mountTournamentDay(root, params) {
         const textarea = el('textarea', {
             class: 'td-paste-textarea',
             rows: 12,
-            placeholder: 'Paste here…\n\n• On iPhone Safari: long-press the FTL pool details page → Select All → Copy → tap into this box → Paste.\n• Works whether you paste 1 pool or all 10 — if multiple, you\'ll pick which is your kid\'s.\n• Don\'t worry about scores, referees, Bout Order — the parser strips them.',
+            placeholder: 'Paste here…\n\n• On iPhone Safari: long-press the FTL pool details page → Select All → Copy → tap into this box → Paste.\n• Works whether you paste 1 pool or all 10 — I\'ll auto-detect which pool you\'re in.\n• Don\'t worry about scores, referees, Bout Order — the parser strips them.',
             autofocus: true
         });
         const previewArea = el('div', { class: 'td-paste-preview' });
         let selectedPoolIdx = 0;
+        let userPickedPool = false;  // becomes true once user manually taps a pool card
         let lastParsed = null;
+
+        // Case-insensitive: find which pool contains the active fencer by lastname token
+        function findUserPoolIdx(pools) {
+            if (!pools || !pools.length) return -1;
+            const me = normalizeName(profile.name);
+            const meTokens = me.split(' ').filter(Boolean);
+            if (!meTokens.length) return -1;
+            for (let i = 0; i < pools.length; i++) {
+                for (const f of pools[i].fencers) {
+                    const fNorm = normalizeName(f.name);
+                    if (meTokens.some(t => t.length >= 3 && fNorm.includes(t))) return i;
+                }
+            }
+            return -1;
+        }
 
         function refreshPreview() {
             const parsed = parseFtlText(textarea.value);
@@ -441,22 +457,31 @@ export async function mountTournamentDay(root, params) {
 
             // Multi-pool: render pool cards as picker
             if (parsed.pools && parsed.pools.length > 1) {
-                previewArea.appendChild(el('div', { class: 'td-paste-count' }, [`Detected ${parsed.pools.length} pools — tap the one you're in:`]));
+                // Auto-select the user's pool — unless the user already picked one
+                const autoIdx = findUserPoolIdx(parsed.pools);
+                if (!userPickedPool && autoIdx >= 0) selectedPoolIdx = autoIdx;
+
+                const headBits = [`Detected ${parsed.pools.length} pools.`];
+                if (autoIdx >= 0) headBits.push(`✓ Found ${profile.name} in Pool #${parsed.pools[autoIdx].number} — pre-selected.`);
+                else headBits.push("Couldn't find your name — tap the right pool below.");
+                previewArea.appendChild(el('div', { class: 'td-paste-count' }, [headBits.join(' ')]));
+
                 for (let i = 0; i < parsed.pools.length; i++) {
                     const p = parsed.pools[i];
                     const card = el('button', {
                         type: 'button',
-                        class: 'td-paste-pool-card' + (i === selectedPoolIdx ? ' selected' : ''),
-                        onclick: () => { selectedPoolIdx = i; refreshPreview(); }
+                        class: 'td-paste-pool-card' + (i === selectedPoolIdx ? ' selected' : '') + (i === autoIdx ? ' auto' : ''),
+                        onclick: () => { selectedPoolIdx = i; userPickedPool = true; refreshPreview(); }
                     }, [
                         el('div', { class: 'td-paste-pool-head' }, [
                             el('span', { class: 'td-paste-pool-num' }, [`POOL #${p.number}`]),
                             p.strip ? el('span', { class: 'td-paste-pool-strip' }, [`Strip ${p.strip}`]) : null,
+                            i === autoIdx ? el('span', { class: 'td-paste-pool-auto' }, ['★ YOU']) : null,
                             el('span', { class: 'td-paste-pool-count' }, [`${p.fencers.length} fencers`])
                         ].filter(Boolean)),
-                        el('div', { class: 'td-paste-pool-roster' }, p.fencers.slice(0, 3).map(f =>
+                        el('div', { class: 'td-paste-pool-roster' }, p.fencers.slice(0, 4).map(f =>
                             el('span', { class: 'td-paste-pool-name' }, [f.name])
-                        ).concat(p.fencers.length > 3 ? [el('span', { class: 'td-paste-pool-more' }, [`+${p.fencers.length - 3} more`])] : []))
+                        ).concat(p.fencers.length > 4 ? [el('span', { class: 'td-paste-pool-more' }, [`+${p.fencers.length - 4} more`])] : []))
                     ]);
                     previewArea.appendChild(card);
                 }
