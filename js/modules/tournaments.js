@@ -53,7 +53,12 @@ export async function mountTournaments(root, params) {
                     t.events.map((e) => el('span', { class: 'chip on' }, [e]))));
             }
             if (t.notes) card.appendChild(el('p', { style: { marginTop: '10px' } }, [t.notes]));
-            card.appendChild(el('div', { class: 'btn-row right' }, [
+            card.appendChild(el('div', { class: 'btn-row', style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '10px' } }, [
+                el('a', {
+                    href: `#tournaments/day?id=${t.id}`,
+                    class: 'btn btn-primary',
+                    style: { flex: '1 1 auto', textDecoration: 'none', textAlign: 'center', fontSize: '14px', fontWeight: 700 }
+                }, [past ? 'View pool / DE' : '🎯 Start Day']),
                 el('button', { class: 'btn-link', onclick: () => openForm(t) }, ['edit']),
                 el('button', { class: 'btn-link', style: { color: 'var(--danger)' }, onclick: async () => {
                     if (!confirm('Delete this tournament?')) return;

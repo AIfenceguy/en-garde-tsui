@@ -15,6 +15,7 @@ import { mountPhysical } from './modules/physical.js';
 import { mountMental } from './modules/mental.js';
 import { mountLessons } from './modules/lessons.js';
 import { mountTournaments } from './modules/tournaments.js';
+import { mountTournamentDay } from './modules/tournament-day.js';
 import { mountImportV1 } from './modules/import_v1.js';
 
 const APP = document.getElementById('app');
@@ -33,6 +34,7 @@ defineRoute('physical', mountPhysical);
 defineRoute('mental', mountMental);
 defineRoute('lessons', mountLessons);
 defineRoute('tournaments', mountTournaments);
+defineRoute('tournaments/day', mountTournamentDay);
 defineRoute('import-v1', mountImportV1);
 
 async function bootstrap() {
