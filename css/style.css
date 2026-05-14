@@ -2251,6 +2251,49 @@ input[name="sets"]:focus {
 .td-paste-pool-name { font-size: 12.5px; color: var(--ink); }
 .td-paste-pool-more { font-size: 11px; color: var(--ink-mute); font-style: italic; }
 
+/* DE-bout preview rows in paste modal */
+.td-paste-de-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    margin: 6px 0;
+    background: #fff;
+    border-radius: 10px;
+    border-left: 4px solid var(--eg-mind, #8B5CF6);
+}
+.td-paste-de-row.win { border-left-color: var(--eg-success, #22C55E); background: rgba(34,197,94,0.05); }
+.td-paste-de-row.loss { border-left-color: var(--eg-danger, #E63946); background: rgba(230,57,70,0.05); }
+.td-paste-de-round {
+    font-family: var(--eg-mono, monospace);
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--eg-primary, #2B6BFF);
+    flex: 0 0 38px;
+    text-align: center;
+}
+.td-paste-de-mid { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.td-paste-de-opp { font-weight: 700; font-size: 13.5px; color: var(--ink); }
+.td-paste-de-club { font-size: 11px; color: var(--ink-mute); }
+.td-paste-de-score {
+    font-family: var(--eg-mono, monospace);
+    font-weight: 800;
+    font-size: 17px;
+    padding: 3px 9px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--ink);
+}
+.td-paste-de-result {
+    font-family: var(--eg-ui, sans-serif);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: var(--ink-mute);
+}
+.td-paste-de-row.win .td-paste-de-result { color: var(--eg-success, #15803D); }
+.td-paste-de-row.loss .td-paste-de-result { color: var(--eg-danger, #E63946); }
+
 /* Body + app-root: kill the dark theme remnants — cream-on-cream overscroll
    and the rgba(0,0,0,0.6) bottom radial that put a black band on the
    dashboard. */

@@ -201,6 +201,150 @@ function splitClubBlob(blob) {
     return { club, country };
 }
 
+/**
+ * Parse a DE (Direct Elimination) tableau paste and extract the user's bouts.
+ *
+ * Heuristic strategy:
+ *   1. Find the user's name line ("(27T) TSUI Raedyn Ho Hin")
+ *   2. Find the next fencer block (their T64 paired opponent)
+ *   3. Read the score on the opponent's data line (winner's POV: e.g. 15-12)
+ *   4. Find the "advancer label" between the user's and opponent's blocks
+ *      (e.g. "(38) ZHOU jiatong") — this tells us who won
+ *   5. If user won, follow the advancer chain to find T32, T16, T8 etc.
+ *
+ * Returns: { isDETableau: true, userFound: bool, bouts: [{ round, opponent_name, opponent_seed, opponent_club, my_score, opp_score, won, time }] }
+ */
+export function parseFtlDETableau(text, userName) {
+    if (!text || !DE_TABLEAU_RE.test(text)) return null;
+    const lines = text.split(/\r?\n/);
+    const userTokens = (userName ? userName.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(t => t.length >= 3) : []);
+    if (!userTokens.length) return { isDETableau: true, userFound: false, bouts: [] };
+
+    // ---- Phase 1: collect fencer blocks ----
+    // A block: name line "(seed) NAME" → optional data line (club + tabs + score) + ref/time lines
+    const blocks = [];
+    for (let i = 0; i < lines.length; i++) {
+        const stripped = lines[i].trim();
+        if (!stripped) continue;
+        if (lines[i].includes('\t')) continue;
+        const seedM = stripped.match(/^\((\d+T?)\)\s+(.+)$/);
+        if (!seedM) continue;
+        const seed = seedM[1];
+        const name = seedM[2];
+        if (name.includes('BYE')) continue;
+        // Skip "advancer" labels — these appear with leading tabs/spaces in raw line
+        if (/^\s+\(/.test(lines[i])) continue;
+        // Collect data + ref + time on following lines (up to next blank or next name line)
+        let club = null, score = null, timeStr = null;
+        for (let j = i + 1; j < Math.min(lines.length, i + 6); j++) {
+            const dl = lines[j];
+            const ds = dl.trim();
+            if (!ds) break;
+            // Stop at next name line
+            if (!dl.includes('\t') && /^\(\d+T?\)/.test(ds)) break;
+            // Time line
+            const tm = ds.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i);
+            if (tm) timeStr = tm[1];
+            // Ref line — skip
+            if (ds.startsWith('Ref ')) continue;
+            // Data line — has tab, may contain score
+            if (dl.includes('\t')) {
+                const cells = dl.split('\t').map(c => c.trim());
+                if (!club && cells[0]) club = cells[0];
+                const scoreM = ds.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
+                if (scoreM && !score) score = { a: parseInt(scoreM[1]), b: parseInt(scoreM[2]) };
+            }
+        }
+        const nameLower = name.toLowerCase().replace(/[^a-z\s]/g, ' ');
+        const isUser = userTokens.some(t => nameLower.includes(t));
+        blocks.push({
+            lineIndex: i, seed, name, club, score, timeStr, isUser
+        });
+    }
+
+    // ---- Phase 2: find advancer labels between blocks ----
+    // Advancer label = line starting with whitespace + "(seed) NAME" between two adjacent blocks
+    function findAdvancerBetween(blockA, blockB) {
+        const from = Math.min(blockA.lineIndex, blockB.lineIndex);
+        const to = Math.max(blockA.lineIndex, blockB.lineIndex);
+        for (let k = from + 1; k < to; k++) {
+            const lk = lines[k];
+            // Advancer lines start with whitespace then "(N) NAME" — different from name lines (no leading ws)
+            if (/^\s+\(\d+T?\)\s+[A-Za-z]/.test(lk) && !lk.includes('—') && !lk.includes('BYE')) {
+                const m = lk.match(/\((\d+T?)\)\s+([^\t]+?)(?:\s{2,}|\t|$)/);
+                if (m) return { seed: m[1], name: m[2].trim() };
+            }
+        }
+        return null;
+    }
+
+    // Time → round mapping (heuristic — typical FTL Cadet schedule)
+    function inferRound(time) {
+        if (!time) return null;
+        const m = time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (!m) return null;
+        let h = parseInt(m[1]); const mn = parseInt(m[2]);
+        if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+        if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+        const t = h * 60 + mn;
+        if (t < 16 * 60 + 0) return 64;        // before 16:00 → T64
+        if (t < 16 * 60 + 40) return 32;       // 16:00-16:39 → T32
+        if (t < 17 * 60 + 30) return 16;       // 16:40-17:29 → T16
+        if (t < 18 * 60 + 0) return 8;         // 17:30-17:59 → T8
+        if (t < 18 * 60 + 30) return 4;        // 18:00-18:29 → SF
+        return 2;
+    }
+
+    // ---- Phase 3: for each user block, find paired opponent + advancer ----
+    const userBlocks = blocks.filter(b => b.isUser);
+    if (!userBlocks.length) return { isDETableau: true, userFound: false, bouts: [] };
+
+    const bouts = [];
+    const seenPairs = new Set();
+    for (const ub of userBlocks) {
+        const ubIdx = blocks.indexOf(ub);
+        for (const offset of [1, -1]) {
+            const opp = blocks[ubIdx + offset];
+            if (!opp || opp.isUser) continue;
+            const pairKey = [ub.lineIndex, opp.lineIndex].sort().join('-');
+            if (seenPairs.has(pairKey)) continue;
+            seenPairs.add(pairKey);
+
+            const advancer = findAdvancerBetween(ub, opp);
+            let userWon = null;
+            if (advancer) {
+                const advNorm = advancer.name.toLowerCase();
+                userWon = userTokens.some(t => advNorm.includes(t));
+            }
+
+            // The T64 bout score lives on the OPPONENT's data line in FTL (winner-POV)
+            // because the spatial layout pushes the user's first bout score to their column.
+            // Fallback to user's score if opp has none.
+            const sObj = opp.score || ub.score;
+            const sTime = opp.timeStr || ub.timeStr;
+            const round = inferRound(sTime) || 64;
+
+            if (sObj && userWon !== null) {
+                const winner = Math.max(sObj.a, sObj.b);
+                const loser = Math.min(sObj.a, sObj.b);
+                bouts.push({
+                    round,
+                    opponent_name: opp.name,
+                    opponent_seed: opp.seed,
+                    opponent_club: opp.club,
+                    my_score: userWon ? winner : loser,
+                    opp_score: userWon ? loser : winner,
+                    won: userWon,
+                    time: sTime
+                });
+            }
+            break;
+        }
+    }
+
+    return { isDETableau: true, userFound: true, bouts };
+}
+
 // Fallback for non-pool-sheet pastes (legacy paths)
 function heuristicFlatParse(lines) {
     const out = [];

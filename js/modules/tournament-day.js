@@ -19,7 +19,7 @@ import {
 } from '../lib/db.js';
 import { safeWrite } from '../lib/offline.js';
 import { getIntel } from '../lib/fencer-intel.js';
-import { parseFtlText, normalizeName } from '../lib/ftl-parser.js';
+import { parseFtlText, parseFtlDETableau, normalizeName } from '../lib/ftl-parser.js';
 
 export async function mountTournamentDay(root, params) {
     const profile = activeProfile();
@@ -372,26 +372,99 @@ export async function mountTournamentDay(root, params) {
     }
 
     function addDE() {
-        const round = prompt('Round of? (32 / 16 / 8 / 4 / 2)', '32');
-        if (!round) return;
-        const oppName = prompt('Opponent name?');
-        if (!oppName) return;
-        const score = prompt('Score? (e.g. 15-12)');
-        if (!score || !score.includes('-')) return;
-        const [a, b] = score.split('-').map(s => Number(s.trim()) || 0);
-        const won = confirm(`V or D?\n\nOK = V (${a}-${b})\nCancel = D`);
-        const my = won ? Math.max(a, b) : Math.min(a, b);
-        const them = won ? Math.min(a, b) : Math.max(a, b);
-        pool.des = pool.des || [];
-        pool.des.push({ round: Number(round), oppName, myScore: my, theirScore: them, won });
-        savePoolToCache(tournament.id, pool);
-        saveBout({
-            tournament, profile,
-            oppF: { name: oppName, club: null, rating: null },
-            myScore: my, oppScore: them, won,
-            deRound: Number(round)
-        }).then(() => toast('DE saved')).catch((e) => console.warn(e));
-        render();
+        const sheet = el('div', { class: 'td-sheet-bg', onclick: (e) => { if (e.target.classList.contains('td-sheet-bg')) close(); } });
+        const sheetInner = el('div', { class: 'td-sheet' });
+
+        const roundSelect = el('select', { class: 'td-input' }, [
+            ['64', 'Table of 64'],
+            ['32', 'Table of 32'],
+            ['16', 'Table of 16'],
+            ['8', 'Table of 8 (Quarterfinal)'],
+            ['4', 'Semifinal'],
+            ['2', 'Final']
+        ].map(([v, label]) => el('option', { value: v, selected: v === '32' }, [label])));
+
+        const oppNameInput = el('input', { type: 'text', class: 'td-input', placeholder: 'Opponent name (e.g. ZHOU jiatong)' });
+        const oppClubInput = el('input', { type: 'text', class: 'td-input', placeholder: 'Opponent club (optional)' });
+        const myScoreInput = el('input', { type: 'number', class: 'td-score-input', value: 15, min: 0, max: 15 });
+        const themScoreInput = el('input', { type: 'number', class: 'td-score-input', value: 12, min: 0, max: 15 });
+        const wonRef = { val: true };
+
+        function updateVD() {
+            sheetInner.querySelector('.td-vd-v').classList.toggle('on', wonRef.val === true);
+            sheetInner.querySelector('.td-vd-d').classList.toggle('on', wonRef.val === false);
+        }
+
+        sheetInner.appendChild(el('div', { class: 'td-sheet-head' }, [
+            el('span', { class: 'td-sheet-eye' }, ['+ ADD DE BOUT']),
+            el('button', { type: 'button', class: 'td-sheet-x', onclick: close }, ['×'])
+        ]));
+
+        sheetInner.appendChild(el('div', { class: 'field', style: { marginTop: '8px' } }, [
+            el('label', { class: 'field-label' }, ['Round']),
+            roundSelect
+        ]));
+        sheetInner.appendChild(el('div', { class: 'field' }, [
+            el('label', { class: 'field-label' }, ['Opponent name']),
+            oppNameInput
+        ]));
+        sheetInner.appendChild(el('div', { class: 'field' }, [
+            el('label', { class: 'field-label' }, ['Opponent club']),
+            oppClubInput
+        ]));
+        sheetInner.appendChild(el('div', { class: 'td-sheet-pair' }, [
+            el('div', { class: 'td-sheet-fencer' }, [
+                el('div', { class: 'td-sheet-fencer-name' }, [profile.name + ' (you)']),
+                myScoreInput
+            ]),
+            el('div', { class: 'td-sheet-vs' }, ['VS']),
+            el('div', { class: 'td-sheet-fencer' }, [
+                el('div', { class: 'td-sheet-fencer-name' }, ['Opponent']),
+                themScoreInput
+            ])
+        ]));
+        sheetInner.appendChild(el('div', { class: 'td-vd-row' }, [
+            el('button', { type: 'button', class: 'td-vd td-vd-v on', onclick: () => { wonRef.val = true; updateVD(); } }, ['V — I won']),
+            el('button', { type: 'button', class: 'td-vd td-vd-d', onclick: () => { wonRef.val = false; updateVD(); } }, ['D — I lost'])
+        ]));
+        sheetInner.appendChild(el('div', { class: 'td-sheet-actions' }, [
+            el('button', { type: 'button', class: 'btn btn-ghost', onclick: close }, ['Cancel']),
+            el('button', { type: 'button', class: 'btn btn-primary', onclick: async () => {
+                const oppName = (oppNameInput.value || '').trim();
+                if (!oppName) { toast('Opponent name required', 'error'); return; }
+                const round = Number(roundSelect.value);
+                const my = Number(myScoreInput.value) || 0;
+                const them = Number(themScoreInput.value) || 0;
+                pool.des = pool.des || [];
+                pool.des.push({
+                    round,
+                    oppName,
+                    oppClub: (oppClubInput.value || '').trim() || null,
+                    myScore: my,
+                    theirScore: them,
+                    won: wonRef.val
+                });
+                savePoolToCache(tournament.id, pool);
+                try {
+                    await saveBout({
+                        tournament, profile,
+                        oppF: { name: oppName, club: oppClubInput.value.trim() || null, rating: null },
+                        myScore: my, oppScore: them, won: wonRef.val,
+                        deRound: round
+                    });
+                    toast(`DE saved · T${round}`);
+                } catch (e) {
+                    console.warn(e);
+                    toast('Saved locally', 'info');
+                }
+                close();
+                render();
+            } }, ['Save DE bout'])
+        ]));
+        sheet.appendChild(sheetInner);
+        document.body.appendChild(sheet);
+        setTimeout(() => oppNameInput.focus(), 50);
+        function close() { sheet.remove(); }
     }
 
     // === Helpers ===========================================================
@@ -451,8 +524,43 @@ export async function mountTournamentDay(root, params) {
         }
 
         function refreshPreview() {
+            // First: try DE-tableau detection
+            const deParsed = parseFtlDETableau(textarea.value, profile.name);
+            if (deParsed && deParsed.isDETableau) {
+                lastParsed = { ...deParsed, mode: 'de' };
+                previewArea.innerHTML = '';
+                if (!deParsed.userFound) {
+                    previewArea.appendChild(el('p', { class: 'td-paste-empty' }, [
+                        `DE tableau detected, but ${profile.name} not found in it. Paste the right event's tableau.`
+                    ]));
+                    return;
+                }
+                if (!deParsed.bouts.length) {
+                    previewArea.appendChild(el('p', { class: 'td-paste-empty' }, [
+                        `Found ${profile.name}, but couldn't extract bout scores. Check if the tableau shows results.`
+                    ]));
+                    return;
+                }
+                previewArea.appendChild(el('div', { class: 'td-paste-count' }, [
+                    `Direct Elimination detected — found ${deParsed.bouts.length} bout${deParsed.bouts.length === 1 ? '' : 's'} for ${profile.name}:`
+                ]));
+                for (const b of deParsed.bouts) {
+                    const result = b.won ? 'VICTORY' : 'DEFEAT';
+                    previewArea.appendChild(el('div', { class: 'td-paste-de-row' + (b.won ? ' win' : ' loss') }, [
+                        el('span', { class: 'td-paste-de-round' }, [`T${b.round}`]),
+                        el('div', { class: 'td-paste-de-mid' }, [
+                            el('span', { class: 'td-paste-de-opp' }, [`vs (${b.opponent_seed}) ${b.opponent_name}`]),
+                            b.opponent_club ? el('span', { class: 'td-paste-de-club' }, [b.opponent_club]) : null
+                        ].filter(Boolean)),
+                        el('span', { class: 'td-paste-de-score' }, [`${b.my_score}-${b.opp_score}`]),
+                        el('span', { class: 'td-paste-de-result' }, [result])
+                    ]));
+                }
+                return;
+            }
+            // Otherwise: pool parse
             const parsed = parseFtlText(textarea.value);
-            lastParsed = parsed;
+            lastParsed = { ...parsed, mode: 'pool' };
             previewArea.innerHTML = '';
 
             // Multi-pool: render pool cards as picker
@@ -558,6 +666,38 @@ export async function mountTournamentDay(root, params) {
             el('button', { type: 'button', class: 'btn btn-ghost', onclick: close }, ['Cancel']),
             el('button', { type: 'button', class: 'btn btn-primary', onclick: () => {
                 if (!lastParsed) return;
+                // DE-tableau mode: append the extracted bouts into pool.des
+                if (lastParsed.mode === 'de' && Array.isArray(lastParsed.bouts) && lastParsed.bouts.length) {
+                    pool.des = pool.des || [];
+                    let added = 0;
+                    for (const b of lastParsed.bouts) {
+                        // De-dupe by opponent + round
+                        if (pool.des.some(x => x.round === b.round && (x.oppName || '').toLowerCase() === b.opponent_name.toLowerCase())) continue;
+                        pool.des.push({
+                            round: b.round,
+                            oppName: b.opponent_name,
+                            oppClub: b.opponent_club || null,
+                            oppRating: b.opponent_seed ? `seed ${b.opponent_seed}` : null,
+                            myScore: b.my_score,
+                            theirScore: b.opp_score,
+                            won: b.won
+                        });
+                        // Also save to Supabase
+                        saveBout({
+                            tournament, profile,
+                            oppF: { name: b.opponent_name, club: b.opponent_club || null, rating: null },
+                            myScore: b.my_score, oppScore: b.opp_score, won: b.won,
+                            deRound: b.round
+                        }).catch((e) => console.warn('DE save fail', e));
+                        added++;
+                    }
+                    savePoolToCache(tournament.id, pool);
+                    toast(`Loaded ${added} DE bout${added === 1 ? '' : 's'}`);
+                    close();
+                    render();
+                    return;
+                }
+                // Pool mode
                 let fencers;
                 if (lastParsed.pools && lastParsed.pools.length > 1) {
                     fencers = lastParsed.pools[selectedPoolIdx]?.fencers || [];
@@ -567,7 +707,7 @@ export async function mountTournamentDay(root, params) {
                     fencers = lastParsed.fencers || [];
                 }
                 if (loadPool(fencers)) { close(); render(); }
-            } }, ['Load this pool →'])
+            } }, ['Load →'])
         ]));
         sheet.appendChild(sheetInner);
         document.body.appendChild(sheet);
