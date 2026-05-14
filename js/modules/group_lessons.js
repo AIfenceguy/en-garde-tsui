@@ -42,15 +42,34 @@ export async function renderGroupLessonsTab(container) {
         if (l.partners?.length) {
             card.appendChild(el('p', { class: 'kicker', style: { marginTop: '8px' } }, [`partners: ${l.partners.join(', ')}`]));
         }
-        card.appendChild(el('div', { class: 'btn-row right' }, [
-            el('button', { class: 'btn-link', onclick: () => openForm(l) }, ['edit']),
-            el('button', { class: 'btn-link', style: { color: 'var(--danger)' }, onclick: async () => {
-                if (!confirm('Delete this lesson?')) return;
-                await safeWrite({ table: 'group_lessons', op: 'delete', payload: {}, match: { id: l.id } });
-                toast('Deleted');
-                renderGroupLessonsTab(container);
-            } }, ['delete'])
-        ]));
+        // edit / delete row — clean text-style buttons (no default browser frame)
+        {
+            const linkBtnStyle = {
+                background: 'transparent',
+                border: 'none',
+                padding: '4px 10px',
+                margin: '0 4px 0 0',
+                cursor: 'pointer',
+                fontFamily: 'var(--eg-mono, monospace)',
+                fontSize: '11px',
+                fontWeight: '700',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-mute, #6B7280)',
+                textDecoration: 'none',
+                borderRadius: '4px'
+            };
+            const dangerBtnStyle = Object.assign({}, linkBtnStyle, { color: '#9b2230' });
+            card.appendChild(el('div', { style: { marginTop: '10px', display: 'flex', justifyContent: 'flex-end', gap: '4px' } }, [
+                el('button', { type: 'button', style: linkBtnStyle, onclick: () => openForm(l) }, ['edit']),
+                el('button', { type: 'button', style: dangerBtnStyle, onclick: async () => {
+                    if (!confirm('Delete this lesson?')) return;
+                    await safeWrite({ table: 'group_lessons', op: 'delete', payload: {}, match: { id: l.id } });
+                    toast('Deleted');
+                    renderGroupLessonsTab(container);
+                } }, ['delete'])
+            ]));
+        }
         container.appendChild(card);
     }
 
