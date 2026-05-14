@@ -359,15 +359,31 @@ export async function mountTournamentDay(root, params) {
             parent.appendChild(el('p', { class: 'td-help' }, ['No DE bouts yet. Tap 📋 Paste tableau to auto-extract from FTL, or + Add DE bout to enter manually.']));
             return;
         }
-        for (const de of pool.des) {
-            const card = el('div', { class: 'td-de-card' }, [
+        // Sort: completed first, then pending, then predicted (in round order within each)
+        const sortedDes = [...pool.des].sort((a, b) => {
+            const order = { completed: 0, pending: 1, predicted: 2 };
+            const sa = order[a.status || 'completed'] ?? 0;
+            const sb = order[b.status || 'completed'] ?? 0;
+            if (sa !== sb) return sa - sb;
+            return (b.round || 0) - (a.round || 0);  // higher round (T64 > T32) first within group
+        });
+        for (const de of sortedDes) {
+            const status = de.status || 'completed';
+            const score = (de.myScore != null && de.theirScore != null)
+                ? `${de.myScore}-${de.theirScore}`
+                : (status === 'pending' ? '—' : '→');
+            const resultLabel =
+                status === 'completed' ? (de.won ? 'VICTORY' : 'DEFEAT') :
+                status === 'pending' ? 'NEXT BOUT' : 'IF YOU WIN';
+            const cls = 'td-de-card td-de-' + status + (status === 'completed' ? (de.won ? ' win' : ' loss') : '');
+            const card = el('div', { class: cls }, [
                 el('div', { class: 'td-de-round' }, [`Round of ${de.round}`]),
                 el('div', { class: 'td-de-pair' }, [
                     el('strong', {}, [profile.name]),
-                    el('span', { class: 'td-de-score' }, [`${de.myScore}-${de.theirScore}`]),
+                    el('span', { class: 'td-de-score' }, [score]),
                     el('strong', {}, [de.oppName])
                 ]),
-                el('div', { class: 'td-de-result' + (de.won ? ' win' : ' loss') }, [de.won ? 'VICTORY' : 'DEFEAT']),
+                el('div', { class: 'td-de-result' + (status === 'completed' ? (de.won ? ' win' : ' loss') : ' upcoming') }, [resultLabel]),
                 de.oppClub ? el('div', { class: 'td-de-meta' }, [de.oppClub + (de.oppRating ? ' · ' + de.oppRating : '')]) : null
             ].filter(Boolean));
             parent.appendChild(card);
@@ -544,19 +560,40 @@ export async function mountTournamentDay(root, params) {
                     ]));
                     return;
                 }
-                previewArea.appendChild(el('div', { class: 'td-paste-count' }, [
-                    `Direct Elimination detected — found ${deParsed.bouts.length} bout${deParsed.bouts.length === 1 ? '' : 's'} for ${profile.name}:`
-                ]));
+                const nDone = deParsed.bouts.filter(b => b.status === 'completed').length;
+                const nPend = deParsed.bouts.filter(b => b.status === 'pending').length;
+                const nPred = deParsed.bouts.filter(b => b.status === 'predicted').length;
+                const summary = [
+                    `Direct Elimination — ${profile.name}'s bracket path:`,
+                    nDone ? `${nDone} completed` : null,
+                    nPend ? `${nPend} pending` : null,
+                    nPred ? `${nPred} predicted (if you win)` : null
+                ].filter(Boolean).join('  ·  ');
+                previewArea.appendChild(el('div', { class: 'td-paste-count' }, [summary]));
                 for (const b of deParsed.bouts) {
-                    const result = b.won ? 'VICTORY' : 'DEFEAT';
-                    previewArea.appendChild(el('div', { class: 'td-paste-de-row' + (b.won ? ' win' : ' loss') }, [
+                    const statusCls =
+                        b.status === 'completed' ? (b.won ? ' win' : ' loss') :
+                        b.status === 'pending' ? ' pending' :
+                        ' predicted';
+                    const statusLabel =
+                        b.status === 'completed' ? (b.won ? 'VICTORY' : 'DEFEAT') :
+                        b.status === 'pending' ? 'NEXT BOUT' :
+                        'IF YOU WIN';
+                    const scoreText = (b.status === 'completed' && b.my_score != null)
+                        ? `${b.my_score}-${b.opp_score}`
+                        : (b.status === 'pending' ? '—' : '→');
+                    previewArea.appendChild(el('div', { class: 'td-paste-de-row' + statusCls }, [
                         el('span', { class: 'td-paste-de-round' }, [`T${b.round}`]),
                         el('div', { class: 'td-paste-de-mid' }, [
-                            el('span', { class: 'td-paste-de-opp' }, [`vs (${b.opponent_seed}) ${b.opponent_name}`]),
+                            el('span', { class: 'td-paste-de-opp' }, [
+                                b.opponent_seed
+                                    ? `vs (${b.opponent_seed}) ${b.opponent_name}`
+                                    : `vs ${b.opponent_name}`
+                            ]),
                             b.opponent_club ? el('span', { class: 'td-paste-de-club' }, [b.opponent_club]) : null
                         ].filter(Boolean)),
-                        el('span', { class: 'td-paste-de-score' }, [`${b.my_score}-${b.opp_score}`]),
-                        el('span', { class: 'td-paste-de-result' }, [result])
+                        el('span', { class: 'td-paste-de-score' }, [scoreText]),
+                        el('span', { class: 'td-paste-de-result' }, [statusLabel])
                     ]));
                 }
                 return;
@@ -669,33 +706,44 @@ export async function mountTournamentDay(root, params) {
             el('button', { type: 'button', class: 'btn btn-ghost', onclick: close }, ['Cancel']),
             el('button', { type: 'button', class: 'btn btn-primary', onclick: () => {
                 if (!lastParsed) return;
-                // DE-tableau mode: append the extracted bouts into pool.des
+                // DE-tableau mode
                 if (lastParsed.mode === 'de' && Array.isArray(lastParsed.bouts) && lastParsed.bouts.length) {
                     pool.des = pool.des || [];
-                    let added = 0;
+                    let savedCount = 0, pendingCount = 0;
                     for (const b of lastParsed.bouts) {
-                        // De-dupe by opponent + round
-                        if (pool.des.some(x => x.round === b.round && (x.oppName || '').toLowerCase() === b.opponent_name.toLowerCase())) continue;
-                        pool.des.push({
+                        // De-dupe by opponent + round (keep latest status)
+                        const existing = pool.des.findIndex(x =>
+                            x.round === b.round &&
+                            normalizeName(x.oppName || '') === normalizeName(b.opponent_name || '')
+                        );
+                        const entry = {
                             round: b.round,
                             oppName: b.opponent_name,
                             oppClub: b.opponent_club || null,
                             oppRating: b.opponent_seed ? `seed ${b.opponent_seed}` : null,
                             myScore: b.my_score,
                             theirScore: b.opp_score,
-                            won: b.won
-                        });
-                        // Also save to Supabase
-                        saveBout({
-                            tournament, profile,
-                            oppF: { name: b.opponent_name, club: b.opponent_club || null, rating: null },
-                            myScore: b.my_score, oppScore: b.opp_score, won: b.won,
-                            deRound: b.round
-                        }).catch((e) => console.warn('DE save fail', e));
-                        added++;
+                            won: b.won,
+                            status: b.status || 'completed'
+                        };
+                        if (existing >= 0) pool.des[existing] = entry;
+                        else pool.des.push(entry);
+                        // Save to Supabase ONLY if completed (don't save predicted/pending)
+                        if (b.status === 'completed' && b.my_score != null) {
+                            saveBout({
+                                tournament, profile,
+                                oppF: { name: b.opponent_name, club: b.opponent_club || null, rating: null },
+                                myScore: b.my_score, oppScore: b.opp_score, won: b.won,
+                                deRound: b.round
+                            }).catch((e) => console.warn('DE save fail', e));
+                            savedCount++;
+                        } else {
+                            pendingCount++;
+                        }
                     }
                     savePoolToCache(tournament.id, pool);
-                    toast(`Loaded ${added} DE bout${added === 1 ? '' : 's'}`);
+                    const msg = `Loaded ${savedCount} completed${pendingCount ? `, ${pendingCount} upcoming` : ''}`;
+                    toast(msg);
                     close();
                     render();
                     return;

@@ -2336,6 +2336,24 @@ input[name="sets"]:focus {
 }
 .td-paste-de-row.win .td-paste-de-result { color: var(--eg-success, #15803D); }
 .td-paste-de-row.loss .td-paste-de-result { color: var(--eg-danger, #E63946); }
+.td-paste-de-row.pending { border-left-color: var(--eg-primary, #2B6BFF); background: rgba(43,107,255,0.06); }
+.td-paste-de-row.pending .td-paste-de-result { color: var(--eg-primary, #2B6BFF); }
+.td-paste-de-row.predicted { border-left-color: var(--eg-mind, #8B5CF6); background: rgba(139,92,246,0.05); opacity: 0.85; }
+.td-paste-de-row.predicted .td-paste-de-result { color: var(--eg-mind, #8B5CF6); }
+.td-paste-de-row.predicted .td-paste-de-score { color: var(--ink-mute); }
+
+/* DE cards in main view — extra status variants */
+.td-de-card.td-de-pending {
+    border-left-color: var(--eg-primary, #2B6BFF);
+    background: linear-gradient(180deg, rgba(43,107,255,0.06), #fff);
+}
+.td-de-card.td-de-predicted {
+    border-left-color: var(--eg-mind, #8B5CF6);
+    background: linear-gradient(180deg, rgba(139,92,246,0.05), #fff);
+    opacity: 0.92;
+}
+.td-de-result.upcoming { color: var(--eg-primary, #2B6BFF); }
+.td-de-card.td-de-predicted .td-de-result.upcoming { color: var(--eg-mind, #8B5CF6); }
 
 /* Body + app-root: kill the dark theme remnants — cream-on-cream overscroll
    and the rgba(0,0,0,0.6) bottom radial that put a black band on the
