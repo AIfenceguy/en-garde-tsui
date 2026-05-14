@@ -65,9 +65,33 @@ export async function mountTournamentDay(root, params) {
     function render() {
         mountPoint.innerHTML = '';
         renderActions(mountPoint);
+        if (pool.live) renderLiveStatus(mountPoint);
         if (pool.fencers.length === 0) renderPoolSetup(mountPoint);
         else renderPoolGrid(mountPoint);
         renderDESection(mountPoint);
+    }
+
+    function renderLiveStatus(parent) {
+        const live = pool.live;
+        const card = el('div', { class: 'td-live-card', style: { margin: '8px var(--gut) 12px' } }, [
+            el('div', { class: 'td-live-head' }, [
+                el('span', { class: 'td-live-eyebrow' }, ['🔴 LIVE — FROM FTL']),
+                el('button', {
+                    type: 'button', class: 'td-live-refresh',
+                    title: 'Refresh from FTL',
+                    onclick: () => getLiveData()
+                }, ['↻'])
+            ]),
+            el('div', { class: 'td-live-event' }, [live.tournamentName + ' · ' + live.eventName]),
+            el('div', { class: 'td-live-me' }, [
+                el('strong', {}, [live.me?.name || profile.name]),
+                live.me?.club ? el('span', { class: 'td-live-meta' }, [' · ' + live.me.club]) : null,
+                live.me?.rating ? el('span', { class: 'td-live-rating' }, [live.me.rating]) : null,
+                live.me?.rank ? el('span', { class: 'td-live-meta' }, [' · seed #' + live.me.rank]) : null
+            ].filter(Boolean)),
+            el('div', { class: 'td-live-meta' }, [`${live.rosterSize} fencers in event roster`])
+        ]);
+        parent.appendChild(card);
     }
 
     function renderActions(parent) {

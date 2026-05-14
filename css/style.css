@@ -2201,7 +2201,15 @@ input[name="sets"]:focus {
 
 /* DE cards */
 .td-de-card { background: var(--surface); border-radius: 12px; padding: 12px 14px; margin: 8px var(--gut); box-shadow: 0 1px 4px rgba(0,0,0,0.05); border-left: 4px solid var(--eg-mind, #8B5CF6); }
+.td-de-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .td-de-round { font-family: var(--eg-mono, monospace); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: var(--eg-mind, #8B5CF6); }
+.td-de-del {
+    background: transparent; border: none; color: var(--ink-mute, #6B7280);
+    font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 8px;
+    border-radius: 50%;
+    transition: all 140ms ease;
+}
+.td-de-del:hover { background: rgba(230,57,70,0.10); color: var(--eg-danger, #E63946); }
 .td-de-pair { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 4px; font-size: 14px; color: var(--ink); }
 .td-de-score { font-family: var(--eg-mono, monospace); font-weight: 700; font-size: 18px; padding: 2px 10px; border-radius: 6px; background: var(--surface-2); }
 .td-de-result { font-family: var(--eg-ui, sans-serif); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; }
@@ -2354,6 +2362,76 @@ input[name="sets"]:focus {
 }
 .td-de-result.upcoming { color: var(--eg-primary, #2B6BFF); }
 .td-de-card.td-de-predicted .td-de-result.upcoming { color: var(--eg-mind, #8B5CF6); }
+
+/* Live-data status card (after Get Live Data succeeds) */
+.td-live-card {
+    background: linear-gradient(180deg, rgba(230,57,70,0.06), #fff);
+    border: 2px solid var(--eg-danger, #E63946);
+    border-radius: 14px;
+    padding: 12px 14px;
+    box-shadow: 0 2px 10px rgba(230,57,70,0.10);
+}
+.td-live-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+.td-live-eyebrow {
+    font-family: var(--eg-mono, monospace);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    color: var(--eg-danger, #E63946);
+}
+.td-live-refresh {
+    background: transparent;
+    border: none;
+    color: var(--eg-danger, #E63946);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 8px;
+    line-height: 1;
+}
+.td-live-refresh:hover { background: rgba(230,57,70,0.10); border-radius: 6px; }
+.td-live-event {
+    font-family: var(--eg-display, serif);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--eg-ink, #1A1D24);
+    margin-bottom: 6px;
+}
+.td-live-me {
+    font-size: 14px;
+    color: var(--eg-ink, #1A1D24);
+    margin-bottom: 4px;
+}
+.td-live-rating {
+    display: inline-block;
+    margin: 0 6px;
+    padding: 1px 7px;
+    background: rgba(43,107,255,0.12);
+    color: var(--eg-primary, #2B6BFF);
+    font-family: var(--eg-mono, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 4px;
+}
+.td-live-meta {
+    font-family: var(--eg-mono, monospace);
+    font-size: 11px;
+    color: var(--ink-mute);
+}
+
+/* SWOT quadrant hint — explains what to enter under each heading
+   (replaces the long placeholder text that was getting truncated) */
+.quadrant-hint {
+    font-size: 12px;
+    color: var(--ink-mute);
+    font-style: italic;
+    margin: 4px 0 8px;
+    line-height: 1.3;
+}
 
 /* Body + app-root: kill the dark theme remnants — cream-on-cream overscroll
    and the rgba(0,0,0,0.6) bottom radial that put a black band on the

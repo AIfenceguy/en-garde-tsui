@@ -157,7 +157,9 @@ export function chipArrayEditor({ values = [], onChange = null, placeholder = 'a
         };
         const input = el('input', {
             type: 'text', placeholder,
-            style: { background: 'transparent', border: '0', outline: 'none', flex: '1 0 140px', padding: '6px 4px', minHeight: '36px' },
+            // flex-basis 100% so the input ALWAYS takes a full row — placeholders
+            // like "what HE struggles with — e.g. slow recover" need the width.
+            style: { background: 'transparent', border: '0', outline: 'none', flex: '1 1 100%', padding: '8px 4px', minHeight: '36px', minWidth: '200px', fontSize: '14px' },
             onkeydown: (e) => {
                 if (e.key === 'Enter' || e.key === ',') {
                     e.preventDefault();

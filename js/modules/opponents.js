@@ -341,10 +341,11 @@ export async function mountOpponentDetail(root, params) {
     }
 
     const cur = swot || { strengths: [], weaknesses: [], opportunities: [], threats: [] };
-    const sEditor = chipArrayEditor({ values: cur.strengths || [], onChange: () => debouncedSwot(), placeholder: 'what HE\'S good at — e.g. fast lunge, beat-attack' });
-    const wEditor = chipArrayEditor({ values: cur.weaknesses || [], onChange: () => debouncedSwot(), placeholder: 'what HE struggles with — e.g. slow recover, weak parry' });
-    const oEditor = chipArrayEditor({ values: cur.opportunities || [], onChange: () => debouncedSwot(), placeholder: 'what I CAN do — e.g. attack-in-prep, counter on his push' });
-    const tEditor = chipArrayEditor({ values: cur.threats || [], onChange: () => debouncedSwot(), placeholder: 'what HE does that scores on me — e.g. flick to back' });
+    // Tight placeholders — long ones get truncated on iPhone width. Type, press Enter.
+    const sEditor = chipArrayEditor({ values: cur.strengths || [], onChange: () => debouncedSwot(), placeholder: 'e.g. fast lunge' });
+    const wEditor = chipArrayEditor({ values: cur.weaknesses || [], onChange: () => debouncedSwot(), placeholder: 'e.g. slow recover' });
+    const oEditor = chipArrayEditor({ values: cur.opportunities || [], onChange: () => debouncedSwot(), placeholder: 'e.g. attack-in-prep' });
+    const tEditor = chipArrayEditor({ values: cur.threats || [], onChange: () => debouncedSwot(), placeholder: 'e.g. flick to back' });
 
     const swotSection = el('div', { class: 'section' }, [
         el('div', { class: 'section-head' }, [
@@ -352,10 +353,26 @@ export async function mountOpponentDetail(root, params) {
             el('span', { class: 'meta' }, [swot ? `updated ${fmtDate(swot.updated_at?.slice(0, 10))}` : 'not started'])
         ]),
         el('div', { class: 'swot' }, [
-            el('div', { class: 'quadrant s' }, [el('h4', {}, ['Strengths']), sEditor]),
-            el('div', { class: 'quadrant w' }, [el('h4', {}, ['Weaknesses']), wEditor]),
-            el('div', { class: 'quadrant o' }, [el('h4', {}, ['Opportunities (mine)']), oEditor]),
-            el('div', { class: 'quadrant t' }, [el('h4', {}, ['Threats (theirs)']), tEditor])
+            el('div', { class: 'quadrant s' }, [
+                el('h4', {}, ['Strengths']),
+                el('p', { class: 'quadrant-hint' }, ["what HE's good at"]),
+                sEditor
+            ]),
+            el('div', { class: 'quadrant w' }, [
+                el('h4', {}, ['Weaknesses']),
+                el('p', { class: 'quadrant-hint' }, ['what HE struggles with']),
+                wEditor
+            ]),
+            el('div', { class: 'quadrant o' }, [
+                el('h4', {}, ['Opportunities (mine)']),
+                el('p', { class: 'quadrant-hint' }, ['what I CAN do']),
+                oEditor
+            ]),
+            el('div', { class: 'quadrant t' }, [
+                el('h4', {}, ['Threats (theirs)']),
+                el('p', { class: 'quadrant-hint' }, ['what HE does that scores on me']),
+                tEditor
+            ])
         ])
     ]);
     root.appendChild(swotSection);

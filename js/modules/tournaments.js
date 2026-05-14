@@ -9,6 +9,9 @@ import { chipArrayEditor } from '../lib/chips.js';
 import { refreshTournamentCountdown } from '../views/shell.js';
 
 export async function mountTournaments(root, params) {
+    // Idempotent re-mount: clear root so internal calls (e.g. after save)
+    // refresh cleanly instead of stacking content on top of the open form.
+    root.innerHTML = '';
     const profile = activeProfile();
     if (!profile) return root.appendChild(el('div', { class: 'empty' }, ['Pick a profile.']));
 
@@ -95,7 +98,12 @@ export async function mountTournaments(root, params) {
             el('button', { type: 'submit', class: 'btn' }, [editing ? 'Save changes' : 'Save tournament'])
         ]));
 
+        let saving = false;
         async function save() {
+            if (saving) return;  // prevent double-submit duplicates
+            saving = true;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
             const fd = new FormData(form);
             const payload = {
                 profile_id: profile.id,
@@ -110,9 +118,14 @@ export async function mountTournaments(root, params) {
                 if (editing) await safeWrite({ table: 'tournaments', op: 'update', payload, match: { id: editing.id } });
                 else         await safeWrite({ table: 'tournaments', op: 'insert', payload });
                 toast('Saved');
+                formMount.innerHTML = '';  // close the form immediately
                 await refreshTournamentCountdown();
-                mountTournaments(root, {});
-            } catch (e) { toast('Save failed: ' + e.message, 'error'); }
+                mountTournaments(root, {});  // re-render the list (root.innerHTML='' at top makes this clean)
+            } catch (e) {
+                toast('Save failed: ' + e.message, 'error');
+                saving = false;
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = editing ? 'Save changes' : 'Save tournament'; }
+            }
         }
     }
 }
