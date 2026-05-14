@@ -317,20 +317,61 @@ export function parseFtlDETableau(text, userName) {
     const meIdx = meCell.idx;
     const maxUserDepth = Math.max(...allFencer.filter(c => !c.bye && userMatch(c.name)).map(c => c.depth), 0);
 
+    // Compute max-appearance-depth per depth-0 fencer (by name normalized).
+    // This tells us how far each fencer advanced in the bracket.
+    function normName(s) { return (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim(); }
+    const maxDepthByName = new Map();
+    for (const c of allFencer) {
+        if (c.bye) continue;
+        const k = normName(c.name);
+        const cur = maxDepthByName.get(k) || 0;
+        if (c.depth > cur) maxDepthByName.set(k, c.depth);
+    }
+
+    // Round R bout opp = the fencer in the OPPOSITE sub-bracket of size 2^R
+    // with the highest max-appearance-depth (they advanced furthest there → they
+    // are the round-R competitor from that side).
+    function oppForRound(R) {
+        if (R === 0) {
+            // T128: simple adjacent pair
+            const opp = depth0[meIdx ^ 1];
+            return opp || null;
+        }
+        const subSize = 1 << R;
+        const userBase = meIdx & ~(subSize - 1);
+        const oppBase = userBase ^ subSize;
+        const oppEnd = Math.min(oppBase + subSize, depth0.length);
+        let best = null, bestDepth = -1;
+        for (let i = oppBase; i < oppEnd; i++) {
+            const cand = depth0[i];
+            if (!cand || cand.bye) continue;
+            const d = maxDepthByName.get(normName(cand.name)) || 0;
+            // Tie-break: prefer the one with the LOWER seed (top seed advances)
+            const seedNum = parseInt((cand.seed || '999').toString().replace(/T/, ''), 10);
+            if (d > bestDepth || (d === bestDepth && best && seedNum < parseInt((best.seed || '999').toString().replace(/T/, ''), 10))) {
+                best = cand; bestDepth = d;
+            }
+        }
+        return best;
+    }
+
     const bouts = [];
     for (let R = 0; R < totalRounds; R++) {
-        const oppIdx = meIdx ^ (1 << R);
-        if (oppIdx >= depth0.length) break;
-        const opp = depth0[oppIdx];
+        const opp = oppForRound(R);
+        if (!opp) break;
         const won = maxUserDepth >= R + 1;
         let myScore = null, oppScore = null;
         if (!opp.bye) {
-            const mid = (meCell.line + opp.line) / 2;
+            // Score for round R bout = depth-(R+1) score cell CLOSEST to the user's
+            // depth-0 line (because scores typically appear near the user/opp affiliations).
             const targetDepth = R + 1;
             const cands = scoreCells.filter(s => s.depth === targetDepth);
-            cands.sort((a, b) => Math.abs(a.line - mid) - Math.abs(b.line - mid));
+            // Score is associated with the bracket pair. For the user's bracket, the
+            // closest one within a reasonable distance is the right one.
+            cands.sort((a, b) => Math.abs(a.line - meCell.line) - Math.abs(b.line - meCell.line));
+            // Also try near opp's depth-0 line as backup
             const best = cands[0];
-            if (best && Math.abs(best.line - mid) <= 12) {
+            if (best) {
                 const [w, l] = best.score;
                 if (won) { myScore = w; oppScore = l; } else { myScore = l; oppScore = w; }
             }
