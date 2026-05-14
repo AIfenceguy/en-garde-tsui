@@ -396,11 +396,12 @@ export async function mountTournamentDay(root, params) {
         let label = '·';
         let cls = 'td-cell';
         if (b) {
-            // Show my score in my-row cells
-            if (i === pool.myIndex) label = b.iWon ? `V${b.theirScore}` : `D${b.theirScore}`;
-            else if (j === pool.myIndex) label = b.iWon ? `D${b.theirScore}` : `V${b.iScore}`;
-            else label = `${b.iScore}-${b.theirScore}`;
-            cls += b.iWon ? (i === pool.myIndex ? ' win' : ' loss') : (i === pool.myIndex ? ' loss' : ' win');
+            // Storage convention: iScore = LOWER-index fencer's score, theirScore = HIGHER's.
+            // For cell (i, j), this row's perspective:
+            const myScoreInRow = (i < j) ? b.iScore : b.theirScore;
+            const iWonThisRow = (i < j) ? b.iWon : !b.iWon;
+            label = iWonThisRow ? `V${myScoreInRow}` : `D${myScoreInRow}`;
+            cls += iWonThisRow ? ' win' : ' loss';
         }
         return el('td', {
             class: cls + (isMine ? ' td-cell-mine' : ''),
@@ -417,18 +418,39 @@ export async function mountTournamentDay(root, params) {
         const otherB = pool.fencers[j];
         const existing = pool.bouts[boutKey(i, j)];
 
+        // Translate stored bout (min-index normalized) to current modal's (i, j) perspective.
+        const existIsScore = existing ? ((i < j) ? existing.iScore : existing.theirScore) : 5;
+        const existThemScore = existing ? ((i < j) ? existing.theirScore : existing.iScore) : 0;
+        const existIWon = existing ? ((i < j) ? existing.iWon : !existing.iWon) : null;
+
         const sheet = el('div', { class: 'td-sheet-bg', onclick: (e) => { if (e.target.classList.contains('td-sheet-bg')) close(); } });
         const sheetInner = el('div', { class: 'td-sheet' });
-        const myScore = el('input', { type: 'number', class: 'td-score-input', value: existing?.iScore ?? 5, min: 0, max: 5 });
-        const themScore = el('input', { type: 'number', class: 'td-score-input', value: existing?.theirScore ?? 0, min: 0, max: 5 });
-        const iWon = { val: existing?.iWon ?? null };
+        const myScore = el('input', { type: 'number', class: 'td-score-input', value: existIsScore, min: 0, max: 5 });
+        const themScore = el('input', { type: 'number', class: 'td-score-input', value: existThemScore, min: 0, max: 5 });
+        const iWon = { val: existIWon };
 
         function updateResultUI() {
             const a = Number(myScore.value) || 0, b = Number(themScore.value) || 0;
-            if (iWon.val === null) iWon.val = a > b;
-            sheetInner.querySelector('.td-vd-v').classList.toggle('on', iWon.val === true);
-            sheetInner.querySelector('.td-vd-d').classList.toggle('on', iWon.val === false);
+            if (a > b) iWon.val = true;
+            else if (b > a) iWon.val = false;
+            else iWon.val = null;
+            const line = sheetInner.querySelector('.td-sheet-result');
+            if (!line) return;
+            if (iWon.val === true) {
+                const winner = (i === pool.myIndex ? me.name : otherA.name);
+                line.textContent = `${winner.toUpperCase()} wins ${a}-${b}`;
+                line.style.color = '#1f7a1f';
+            } else if (iWon.val === false) {
+                const winner = (j === pool.myIndex ? me.name : otherB.name);
+                line.textContent = `${winner.toUpperCase()} wins ${b}-${a}`;
+                line.style.color = '#1f7a1f';
+            } else {
+                line.textContent = 'Tied — increment the winner (priority touch).';
+                line.style.color = '#9b2230';
+            }
         }
+        myScore.addEventListener('input', updateResultUI);
+        themScore.addEventListener('input', updateResultUI);
 
         sheetInner.appendChild(el('div', { class: 'td-sheet-head' }, [
             el('span', { class: 'td-sheet-eye' }, [isMyRow ? 'YOUR BOUT' : 'POOL BOUT']),
@@ -447,16 +469,18 @@ export async function mountTournamentDay(root, params) {
                 themScore
             ])
         ]));
-        sheetInner.appendChild(el('div', { class: 'td-vd-row' }, [
-            el('button', { type: 'button', class: 'td-vd td-vd-v', onclick: () => { iWon.val = true; updateResultUI(); } }, ['V — ' + (i === pool.myIndex ? me.name : otherA.name) + ' wins']),
-            el('button', { type: 'button', class: 'td-vd td-vd-d', onclick: () => { iWon.val = false; updateResultUI(); } }, ['D — ' + (j === pool.myIndex ? me.name : otherB.name) + ' wins'])
-        ]));
+        // Auto-determined result line (replaces the V/D toggle buttons).
+        sheetInner.appendChild(el('div', { class: 'td-sheet-result', style: 'text-align:center;font-family:var(--eg-mono,monospace);font-size:13px;font-weight:700;letter-spacing:0.06em;padding:8px 0 4px;color:#6B7280;' }, ['']));
         sheetInner.appendChild(el('div', { class: 'td-sheet-actions' }, [
             existing ? el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { delete pool.bouts[boutKey(i,j)]; savePoolToCache(tournament.id, pool); close(); render(); } }, ['Delete']) : null,
             el('button', { type: 'button', class: 'btn btn-primary', onclick: async () => {
                 const a = Number(myScore.value) || 0, b = Number(themScore.value) || 0;
-                if (iWon.val === null) iWon.val = a > b;
-                const bout = { iScore: a, theirScore: b, iWon: iWon.val };
+                if (a === b) { toast('Tied score — increment the winner (priority touch)', 'error'); return; }
+                iWon.val = (a > b);
+                // Normalize on save so iScore is always for the LOWER-index fencer.
+                const bout = (i < j)
+                    ? { iScore: a, theirScore: b, iWon: iWon.val }
+                    : { iScore: b, theirScore: a, iWon: !iWon.val };
                 pool.bouts[boutKey(i, j)] = bout;
                 savePoolToCache(tournament.id, pool);
                 // If this is MY bout, save to bouts table
@@ -666,9 +690,26 @@ export async function mountTournamentDay(root, params) {
         const wonRef = { val: true };
 
         function updateVD() {
-            sheetInner.querySelector('.td-vd-v').classList.toggle('on', wonRef.val === true);
-            sheetInner.querySelector('.td-vd-d').classList.toggle('on', wonRef.val === false);
+            const my = Number(myScoreInput.value) || 0;
+            const them = Number(themScoreInput.value) || 0;
+            if (my > them) wonRef.val = true;
+            else if (them > my) wonRef.val = false;
+            else wonRef.val = null;
+            const line = sheetInner.querySelector('.td-sheet-result');
+            if (!line) return;
+            if (wonRef.val === true) {
+                line.textContent = `${profile.name.toUpperCase()} wins ${my}-${them}`;
+                line.style.color = '#1f7a1f';
+            } else if (wonRef.val === false) {
+                line.textContent = `OPPONENT wins ${them}-${my}`;
+                line.style.color = '#1f7a1f';
+            } else {
+                line.textContent = 'Tied — increment the winner (priority touch).';
+                line.style.color = '#9b2230';
+            }
         }
+        // Hook inputs so the result line updates as you type
+        // (declared after both inputs exist — moved listener attach below in the build flow.)
 
         sheetInner.appendChild(el('div', { class: 'td-sheet-head' }, [
             el('span', { class: 'td-sheet-eye' }, ['+ ADD DE BOUT']),
@@ -698,10 +739,11 @@ export async function mountTournamentDay(root, params) {
                 themScoreInput
             ])
         ]));
-        sheetInner.appendChild(el('div', { class: 'td-vd-row' }, [
-            el('button', { type: 'button', class: 'td-vd td-vd-v on', onclick: () => { wonRef.val = true; updateVD(); } }, ['V — I won']),
-            el('button', { type: 'button', class: 'td-vd td-vd-d', onclick: () => { wonRef.val = false; updateVD(); } }, ['D — I lost'])
-        ]));
+        // Auto-result line (replaces V/D toggle buttons in DE bout entry).
+        sheetInner.appendChild(el('div', { class: 'td-sheet-result', style: 'text-align:center;font-family:var(--eg-mono,monospace);font-size:13px;font-weight:700;letter-spacing:0.06em;padding:8px 0 4px;color:#6B7280;' }, ['']));
+        myScoreInput.addEventListener('input', updateVD);
+        themScoreInput.addEventListener('input', updateVD);
+        updateVD();
         sheetInner.appendChild(el('div', { class: 'td-sheet-actions' }, [
             el('button', { type: 'button', class: 'btn btn-ghost', onclick: close }, ['Cancel']),
             el('button', { type: 'button', class: 'btn btn-primary', onclick: async () => {
@@ -710,6 +752,8 @@ export async function mountTournamentDay(root, params) {
                 const round = Number(roundSelect.value);
                 const my = Number(myScoreInput.value) || 0;
                 const them = Number(themScoreInput.value) || 0;
+                if (my === them) { toast('Tied score — increment the winner (priority touch)', 'error'); return; }
+                wonRef.val = (my > them);
                 pool.des = pool.des || [];
                 pool.des.push({
                     round,
