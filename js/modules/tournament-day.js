@@ -347,13 +347,16 @@ export async function mountTournamentDay(root, params) {
     function renderDESection(parent) {
         if (pool.fencers.length === 0) return;
         parent.appendChild(el('div', { class: 'td-section', style: { marginTop: '24px' } }, [
-            el('div', { class: 'td-section-head' }, [
+            el('div', { class: 'td-section-head', style: { flexWrap: 'wrap', gap: '8px' } }, [
                 el('h2', { class: 'td-h2' }, ['Direct Elimination']),
-                el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: addDE }, ['+ Add DE bout'])
+                el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } }, [
+                    el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: openPasteModal }, ['📋 Paste tableau']),
+                    el('button', { type: 'button', class: 'btn btn-primary btn-sm', onclick: addDE }, ['+ Add DE bout'])
+                ])
             ])
         ]));
         if (!pool.des || !pool.des.length) {
-            parent.appendChild(el('p', { class: 'td-help' }, ['No DE bouts yet. After pools, tap "+ Add DE bout" for each round.']));
+            parent.appendChild(el('p', { class: 'td-help' }, ['No DE bouts yet. Tap 📋 Paste tableau to auto-extract from FTL, or + Add DE bout to enter manually.']));
             return;
         }
         for (const de of pool.des) {
