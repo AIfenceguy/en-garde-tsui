@@ -73,25 +73,86 @@ export async function mountTournamentDay(root, params) {
 
     function renderLiveStatus(parent) {
         const live = pool.live;
+        // Inline-styled status chips (avoids editing style.css which isn't in staging)
+        const chipBase = 'display:inline-block;padding:2px 8px;margin:0 6px 4px 0;border-radius:999px;font-family:var(--eg-mono,monospace);font-size:11px;font-weight:700;letter-spacing:0.04em;';
+        const chipOk = chipBase + 'background:rgba(34,139,34,0.12);color:#1f7a1f;';
+        const chipPending = chipBase + 'background:rgba(107,114,128,0.10);color:#6B7280;';
+        const dataChips = [];
+        if (live.rosterSize) dataChips.push(el('span', { style: chipOk }, [`✓ roster (${live.rosterSize})`]));
+        if (live.poolsRaw) {
+            const n = countPoolRounds(live.poolsRaw);
+            dataChips.push(el('span', { style: chipOk }, [`✓ pools${n ? ' (' + n + ')' : ''}`]));
+        } else { dataChips.push(el('span', { style: chipPending }, ['◌ pools'])); }
+        if (live.tableauRaw) {
+            const n = countTableauRounds(live.tableauRaw);
+            dataChips.push(el('span', { style: chipOk }, [`✓ tableau${n ? ' (T' + n + ')' : ''}`]));
+        } else { dataChips.push(el('span', { style: chipPending }, ['◌ tableau'])); }
         const card = el('div', { class: 'td-live-card', style: { margin: '8px var(--gut) 12px' } }, [
             el('div', { class: 'td-live-head' }, [
                 el('span', { class: 'td-live-eyebrow' }, ['🔴 LIVE — FROM FTL']),
-                el('button', {
-                    type: 'button', class: 'td-live-refresh',
-                    title: 'Refresh from FTL',
-                    onclick: () => getLiveData()
-                }, ['↻'])
+                el('button', { type: 'button', class: 'td-live-refresh', title: 'Refresh from FTL', onclick: () => getLiveData() }, ['↻'])
             ]),
             el('div', { class: 'td-live-event' }, [live.tournamentName + ' · ' + live.eventName]),
             el('div', { class: 'td-live-me' }, [
                 el('strong', {}, [live.me?.name || profile.name]),
                 live.me?.club ? el('span', { class: 'td-live-meta' }, [' · ' + live.me.club]) : null,
                 live.me?.rating ? el('span', { class: 'td-live-rating' }, [live.me.rating]) : null,
-                live.me?.rank ? el('span', { class: 'td-live-meta' }, [' · seed #' + live.me.rank]) : null
+                live.me?.rank && live.me.rank !== '-' ? el('span', { class: 'td-live-meta' }, [' · seed ' + live.me.rank]) : null
             ].filter(Boolean)),
-            el('div', { class: 'td-live-meta' }, [`${live.rosterSize} fencers in event roster`])
-        ]);
+            el('div', { style: 'display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 6px;' }, dataChips),
+            live.poolsRaw ? renderLivePoolSummary(live.poolsRaw, live.me?.name)
+                          : el('div', { class: 'td-live-meta' }, [`${live.rosterSize} fencers in event roster`]),
+            live.tableauRaw ? renderLiveTableauSummary(live.tableauRaw, live.me?.name) : null,
+            live.fetched_at ? el('div', { class: 'td-live-meta', style: 'font-size:11px;margin-top:6px;opacity:0.6;' }, [`fetched ${new Date(live.fetched_at).toLocaleTimeString()}`]) : null
+        ].filter(Boolean));
         parent.appendChild(card);
+    }
+
+    // Defensive: FTL pools/tableau JSON shape varies — probe and render safely.
+    function countPoolRounds(raw) {
+        if (!raw) return 0;
+        if (Array.isArray(raw.rounds)) return raw.rounds.length;
+        if (Array.isArray(raw)) return raw.length;
+        if (raw.pools) return Array.isArray(raw.pools) ? raw.pools.length : 0;
+        return 0;
+    }
+    function countTableauRounds(raw) {
+        if (!raw) return 0;
+        if (Array.isArray(raw.rounds)) return raw.rounds.length;
+        if (raw.tableau && raw.tableau.size) return raw.tableau.size;
+        if (raw.size) return raw.size;
+        if (Array.isArray(raw)) return raw.length;
+        return 0;
+    }
+    function renderLivePoolSummary(raw, myName) {
+        const myLower = (myName || '').toLowerCase();
+        let found = null;
+        const walk = (obj) => {
+            if (!obj || found) return;
+            if (Array.isArray(obj)) { obj.forEach(walk); return; }
+            if (typeof obj === 'object') {
+                const n = (obj.name || obj.fencerName || obj.competitor || '').toString().toLowerCase();
+                if (myLower && n && n.includes(myLower.split(' ')[0])) { found = obj; return; }
+                Object.values(obj).forEach(walk);
+            }
+        };
+        walk(raw);
+        if (found) {
+            const bits = [];
+            if (found.place || found.rank) bits.push(`Place: ${found.place || found.rank}`);
+            if (found.victories || found.V) bits.push(`V: ${found.victories || found.V}`);
+            if (found.indicator || found.ind) bits.push(`Ind: ${found.indicator || found.ind}`);
+            if (found.touchesScored || found.TS) bits.push(`TS: ${found.touchesScored || found.TS}`);
+            if (found.touchesReceived || found.TR) bits.push(`TR: ${found.touchesReceived || found.TR}`);
+            return el('div', { class: 'td-live-meta', style: 'margin-top:4px;' }, [
+                el('strong', {}, ['Your pool result: ']),
+                bits.length ? bits.join(' · ') : '(found, but unrecognized fields)'
+            ]);
+        }
+        return el('div', { class: 'td-live-meta' }, ['Pool data fetched — your row not yet matched']);
+    }
+    function renderLiveTableauSummary(raw, myName) {
+        return el('div', { class: 'td-live-meta' }, ['DE tableau fetched — bracket render pending']);
     }
 
     function renderActions(parent) {
@@ -492,15 +553,30 @@ export async function mountTournamentDay(root, params) {
                 toast(`${profile.name} not in roster for ${event.name}`, 'error');
                 return;
             }
-            toast(`✓ ${ftlTour.name} → ${event.name} → ${profile.name} (#${me.rank || '-'}) in ${comps.length}-fencer roster`, 'info');
-            // Save metadata into pool state for display
+            // FTL JSON shape: name, club1, weaponRating (e.g. "B26"), rankSort (high=no rank).
+            const myRating = me.weaponRating || me.rating || '';
+            const myRank = (me.rankSort && me.rankSort < 9000) ? `#${me.rankSort}` : '-';
+            toast(`✓ ${ftlTour.name} → ${event.name} → ${profile.name} (${myRating || myRank}) in ${comps.length}-fencer roster`, 'info');
             pool.live = {
                 tournamentName: ftlTour.name,
                 eventName: event.name,
                 eventId: event.id,
                 rosterSize: comps.length,
-                me: { name: me.name, club: me.club1, rating: me.rating, rank: me.rank }
+                me: { name: me.name, club: me.club1, rating: myRating, rank: myRank, div: me.div || '' },
+                fetched_at: Date.now()
             };
+            // Try pool + tableau in parallel. These Worker endpoints may not
+            // exist yet — fail soft if so (catch→null) and just keep roster.
+            try {
+                const [pr, tr] = await Promise.all([
+                    fetch(`${FTL_WORKER_URL}/event/pools?eid=${event.id}`).then(r => r.json()).catch(() => null),
+                    fetch(`${FTL_WORKER_URL}/event/tableau?eid=${event.id}`).then(r => r.json()).catch(() => null)
+                ]);
+                if (pr && pr.ok && pr.data) { pool.live.poolsRaw = pr.data; pool.live.poolsPath = pr.path; }
+                if (tr && tr.ok && tr.data) { pool.live.tableauRaw = tr.data; pool.live.tableauPath = tr.path; }
+            } catch (e) {
+                console.warn('pool/tableau fetch failed (worker may not have endpoints yet)', e);
+            }
             savePoolToCache(tournament.id, pool);
             render();
         } catch (e) {
