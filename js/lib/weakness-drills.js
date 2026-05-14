@@ -11,8 +11,8 @@
 // Slugs MUST match opponents.archetypes taxonomy (opponents.js ARCHETYPES) so
 // bout-loss-rate can be computed live from logged data.
 const WEAKNESS_PROFILE = {
-    raedyn: ['unpredictable', 'aggressive'],
-    kaylan: ['unpredictable']
+    raedyn: ['counter', 'unpredictable', 'aggressive'],
+    kaylan: ['counter', 'unpredictable']
 };
 
 const DRILL_BANK = {
@@ -62,6 +62,55 @@ const DRILL_BANK = {
                 data: 'Tired legs = pattern-matching brain. Separate the two systems.',
                 game_plan: 'Wall-sit hold for 60s. Partner flashes 1 or 2 fingers in your peripheral every 3-5s — you call out the number. 3 rounds. Quality over time.',
                 cue: 'Quads burn but you miss numbers = you are THINKING with your legs. Slow your breathing, watch the fingers.'
+            }
+        ]
+    },
+    // ──────────────────────────────────────────────────────────────────────
+    counter: {
+        slug: 'counter',
+        label: 'COUNTER-ATTACKERS',
+        emoji: '🪤',
+        opponent_profile: 'Patient. Passive distance. Waits for you to commit, then counter-attacks into your prep — or parry-ripostes your final lunge. Wins by punishing your aggression, not by initiating.',
+        why_it_hurts: 'You over-commit because they "look beatable". Then your attack gets eaten by a counter-touch you never saw coming.',
+        technique: [
+            {
+                tag: '🎭 SECOND-INTENTION FAKE',
+                priority: 1,
+                data: 'Counter-fencers attack into your finish. Bait them — finish for real on the SECOND beat.',
+                game_plan: 'Drill: fake attack with half-lunge (no commitment). Coach counter-attacks. You parry-riposte their counter. 4 sets × 8 reps. Score = clean riposte AFTER drawing their counter.',
+                cue: "Your first attack is a SHOW. Their counter is the real opening. Wait for the bite, then strike."
+            },
+            {
+                tag: '⚔️ BEAT BEFORE YOU LUNGE',
+                priority: 1,
+                data: 'A clean blade lets them counter. A beaten blade can not.',
+                game_plan: 'Coach holds point in line. You advance-beat-lunge. 30 reps × 3 sets. Every attack starts with a beat (4 or 6 — alternate). NEVER a straight attack into static point.',
+                cue: 'No beat = no attack. Their blade must be moved before your foot lands.'
+            },
+            {
+                tag: '🐢 SLOW PREP, FAST FINISH',
+                priority: 2,
+                data: 'Counter-fencers time your tempo. Break it.',
+                game_plan: 'Bouting drill — every attack uses slow-slow-FAST tempo. The two slow steps are normal advance speed. The FAST is an explosive lunge after a tempo hold. 5 attacks × 4 rounds. Score on clean single-light only.',
+                cue: 'If your three steps look the same speed, you are PREDICTABLE. Stretch the prep. EXPLODE on three.'
+            }
+        ],
+        body: [
+            {
+                tag: '🎯 PRECISE BEAT-LUNGE',
+                priority: 1,
+                add_drill: 'point-control-drill',
+                data: 'A weak beat tells the counter-fencer your real intent. The beat must be sharp AND your point on target the next frame.',
+                game_plan: 'Wall drill: beat a tennis ball hanging on a string, then hit a 1-inch target on the wall within 0.4s of the beat. 4 sets × 15 reps. Miss = reset. Quality over speed.',
+                cue: 'Beat hard, point hard. No drift between the two. Your blade must arrive ON TARGET, not near it.'
+            },
+            {
+                tag: '🏃 LOADED-BACK EXPLOSIVE LUNGE',
+                priority: 2,
+                add_drill: 'plyo-lunge',
+                data: 'Counter-fencers exploit slow finishes. Your lunge must be sub-0.5s from prep-load to landing.',
+                game_plan: 'Static-back-foot loaded lunge × 12 reps × 4 sets. Coach calls "GO" at random intervals during a 60s prep-hold. Punishment for early lunge = 5 burpees.',
+                cue: 'If your back foot drifts during prep, you have TELEGRAPHED. Stay loaded. Wait for GO. Then explode.'
             }
         ]
     },
