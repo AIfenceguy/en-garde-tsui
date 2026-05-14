@@ -117,11 +117,11 @@ export async function mountTournamentDay(root, params) {
         return 0;
     }
     function countTableauRounds(raw) {
+        // raw shape from /event/tableau (Worker v5+):
+        //   { seeding: [{name, seed, advanced, status, ...}], trees: [{numTables, name, ...}] }
         if (!raw) return 0;
-        if (Array.isArray(raw.rounds)) return raw.rounds.length;
-        if (raw.tableau && raw.tableau.size) return raw.tableau.size;
-        if (raw.size) return raw.size;
-        if (Array.isArray(raw)) return raw.length;
+        if (raw.trees?.[0]?.numTables) return raw.trees[0].numTables;
+        if (Array.isArray(raw.seeding)) return raw.seeding.length;
         return 0;
     }
     function renderLivePoolSummary(raw, myName) {
@@ -161,7 +161,39 @@ export async function mountTournamentDay(root, params) {
         ]);
     }
     function renderLiveTableauSummary(raw, myName) {
-        return el('div', { class: 'td-live-meta' }, ['DE tableau fetched — bracket render pending']);
+        // Find user in seeding (case-INSENSITIVE per CLAUDE.md #7)
+        const list = Array.isArray(raw?.seeding) ? raw.seeding : [];
+        const myLower = (myName || '').toLowerCase();
+        const myTokens = myLower.split(/\s+/).filter(t => t.length >= 3);
+        let me = null;
+        for (const f of list) {
+            const n = (f.name || '').toLowerCase();
+            if (myTokens.length && myTokens.every(t => n.includes(t))) { me = f; break; }
+        }
+        const tree = raw?.trees?.[0];
+        const tableSize = tree?.numTables ? Math.pow(2, 7 - tree.numTables) : null;
+            // FTL: numTables=6 → T64, 5→T32, 4→T16, etc. (rough heuristic)
+        const treeLine = tree ? `${tree.name || 'Primary Tableau'}${tree.numTables ? ' · ' + tree.numTables + ' tables' : ''}` : '';
+        if (!me) {
+            return el('div', { class: 'td-live-meta', style: 'margin-top:6px;' }, [
+                `DE tableau · ${list.length} seeded${treeLine ? ' · ' + treeLine : ''}`
+            ]);
+        }
+        // me has: seed (e.g. "27T"), advanced (bool), elim (bool), exempt, noShow, status
+        const advanced = !!me.advanced;
+        const elim = !!me.elim;
+        const status = me.status || (advanced ? 'Advanced' : elim ? 'Eliminated' : 'Pending');
+        const statusBg = advanced ? 'rgba(34,139,34,0.15)' : (elim ? 'rgba(230,57,70,0.12)' : 'rgba(107,114,128,0.10)');
+        const statusColor = advanced ? '#1f7a1f' : (elim ? '#9b2230' : '#6B7280');
+        return el('div', { style: 'margin-top:6px;padding:8px 10px;background:rgba(0,0,0,0.03);border-radius:8px;' }, [
+            el('div', { style: 'font-size:11px;color:#6B7280;font-family:var(--eg-mono,monospace);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;' }, ['DE — your seed']),
+            el('div', { style: 'display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;font-size:14px;' }, [
+                el('strong', { style: 'font-size:18px;color:#1A1D24;' }, [`Seed ${me.seed || '?'}`]),
+                me.rating ? el('span', { style: 'font-family:var(--eg-mono,monospace);background:rgba(43,107,255,0.12);color:#2B6BFF;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:700;' }, [me.rating]) : null,
+                treeLine ? el('span', { style: 'color:#6B7280;font-size:12px;' }, [treeLine]) : null,
+                el('span', { style: `padding:2px 8px;border-radius:999px;background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;` }, [status])
+            ].filter(Boolean))
+        ]);
     }
 
     function renderActions(parent) {
@@ -582,7 +614,9 @@ export async function mountTournamentDay(root, params) {
                     fetch(`${FTL_WORKER_URL}/event/tableau?eid=${event.id}`).then(r => r.json()).catch(() => null)
                 ]);
                 if (pr && pr.ok && pr.data) { pool.live.poolsRaw = pr.data; pool.live.poolsPath = pr.path; }
-                if (tr && tr.ok && tr.data) { pool.live.tableauRaw = tr.data; pool.live.tableauPath = tr.path; }
+                if (tr && tr.ok && (tr.seeding?.length || tr.trees?.length)) {
+                    pool.live.tableauRaw = { seeding: tr.seeding || [], trees: tr.trees || [] };
+                }
             } catch (e) {
                 console.warn('pool/tableau fetch failed (worker may not have endpoints yet)', e);
             }
