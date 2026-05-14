@@ -443,9 +443,11 @@ export async function mountTournamentDay(root, params) {
                 toast('FTL session expired — refresh cookies via Cookie-Editor + wrangler secret put', 'error');
                 return;
             }
-            // Step 2: find tournament (case-insensitive name match)
+            // Step 2: find tournament (case-insensitive name match).
+            // Multiple years often share a name; prefer the one CLOSEST to the
+            // local tournament's start_date.
             const tourResp = await fetch(`${FTL_WORKER_URL}/tournaments?period=last30`).then(r => r.json());
-            const matches = (tourResp.tournaments || []).filter(t =>
+            let matches = (tourResp.tournaments || []).filter(t =>
                 (t.name || '').toLowerCase().includes(tName) ||
                 tName.includes((t.name || '').toLowerCase())
             );
@@ -453,7 +455,14 @@ export async function mountTournamentDay(root, params) {
                 toast(`No FTL tournament matches "${tournament.name}". Check tournament name.`, 'error');
                 return;
             }
+            // Sort by distance to local tournament's start_date (ascending — closest first)
+            const localStart = tournament.start_date ? Date.parse(tournament.start_date) : Date.now();
+            matches = matches.map(t => ({
+                t,
+                diff: Math.abs((Date.parse(t.start || t.dates) || 0) - localStart)
+            })).sort((a, b) => a.diff - b.diff).map(x => x.t);
             const ftlTour = matches[0];
+            console.log('[getLiveData] picked tournament:', ftlTour.name, 'start:', ftlTour.start, 'from', matches.length, 'matches');
             // Step 3: find event for this profile's role (case-insensitive)
             const evResp = await fetch(`${FTL_WORKER_URL}/events?tid=${ftlTour.id}`).then(r => r.json());
             const events = evResp.events || [];
