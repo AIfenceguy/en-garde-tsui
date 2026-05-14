@@ -66,10 +66,53 @@ export async function renderPrivateLessonsTab(container) {
             card.appendChild(el('blockquote', { style: { borderLeft: '2px solid var(--accent)', margin: '12px 0 0', paddingLeft: '12px', fontStyle: 'italic' } }, [l.coach_quote]));
         }
         if (l.practice_plan) {
-            card.appendChild(el('details', { style: { marginTop: '10px' } }, [
-                el('summary', { class: 'kicker', style: { cursor: 'pointer' } }, ['practice plan']),
-                el('p', {}, [l.practice_plan])
-            ]));
+            const wrap = el('div', { style: { marginTop: '10px' } });
+            const body = el('p', {
+                style: {
+                    margin: '8px 0 0',
+                    padding: '10px 12px',
+                    background: 'rgba(0,0,0,0.03)',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    color: 'var(--ink, #1A1D24)',
+                    lineHeight: '1.5',
+                    display: 'none'
+                }
+            }, [l.practice_plan]);
+            const chev = el('span', {
+                style: {
+                    display: 'inline-block',
+                    transition: 'transform 0.15s ease',
+                    marginRight: '6px',
+                    fontSize: '10px',
+                    color: 'var(--ink-mute, #6B7280)'
+                }
+            }, ['▶']);
+            const toggle = el('button', {
+                type: 'button',
+                style: {
+                    background: 'transparent',
+                    border: 'none',
+                    padding: '4px 0',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--eg-mono, monospace)',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    color: 'var(--ink-mute, #6B7280)',
+                    display: 'inline-flex',
+                    alignItems: 'center'
+                },
+                onclick: () => {
+                    const open = body.style.display !== 'none';
+                    body.style.display = open ? 'none' : 'block';
+                    chev.style.transform = open ? 'rotate(0deg)' : 'rotate(90deg)';
+                }
+            }, [chev, 'Practice plan']);
+            wrap.appendChild(toggle);
+            wrap.appendChild(body);
+            card.appendChild(wrap);
         }
         // edit button
         card.appendChild(el('div', { class: 'btn-row right', style: { marginTop: '10px' } }, [
