@@ -125,31 +125,40 @@ export async function mountTournamentDay(root, params) {
         return 0;
     }
     function renderLivePoolSummary(raw, myName) {
+        // FTL /pools/results/data returns an array of objects with fields:
+        //   id, name, place, tie, v, m, vm, ts, tr, ind, prediction, club1, div, country
+        // Case-INSENSITIVE name match per CLAUDE.md rule #7.
+        const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
         const myLower = (myName || '').toLowerCase();
+        const myTokens = myLower.split(/\s+/).filter(t => t.length >= 3);
         let found = null;
-        const walk = (obj) => {
-            if (!obj || found) return;
-            if (Array.isArray(obj)) { obj.forEach(walk); return; }
-            if (typeof obj === 'object') {
-                const n = (obj.name || obj.fencerName || obj.competitor || '').toString().toLowerCase();
-                if (myLower && n && n.includes(myLower.split(' ')[0])) { found = obj; return; }
-                Object.values(obj).forEach(walk);
-            }
-        };
-        walk(raw);
-        if (found) {
-            const bits = [];
-            if (found.place || found.rank) bits.push(`Place: ${found.place || found.rank}`);
-            if (found.victories || found.V) bits.push(`V: ${found.victories || found.V}`);
-            if (found.indicator || found.ind) bits.push(`Ind: ${found.indicator || found.ind}`);
-            if (found.touchesScored || found.TS) bits.push(`TS: ${found.touchesScored || found.TS}`);
-            if (found.touchesReceived || found.TR) bits.push(`TR: ${found.touchesReceived || found.TR}`);
-            return el('div', { class: 'td-live-meta', style: 'margin-top:4px;' }, [
-                el('strong', {}, ['Your pool result: ']),
-                bits.length ? bits.join(' · ') : '(found, but unrecognized fields)'
+        for (const f of list) {
+            const n = (f.name || '').toLowerCase();
+            if (myTokens.length && myTokens.every(t => n.includes(t))) { found = f; break; }
+        }
+        if (!found) {
+            return el('div', { class: 'td-live-meta' }, [
+                `Pool data fetched — ${list.length} fencers — your row not yet matched`
             ]);
         }
-        return el('div', { class: 'td-live-meta' }, ['Pool data fetched — your row not yet matched']);
+        // Build a compact pool-result card: Place X · V-M · TS/TR · Ind · Status
+        const advanced = (found.prediction || '').toLowerCase().includes('advanc');
+        const pct = typeof found.vm === 'number' ? Math.round(found.vm * 100) : null;
+        const indStr = (found.ind > 0 ? '+' : '') + (found.ind != null ? found.ind : '');
+        const statusBg = advanced ? 'rgba(34,139,34,0.15)' : 'rgba(230,57,70,0.12)';
+        const statusColor = advanced ? '#1f7a1f' : '#9b2230';
+        return el('div', { style: 'margin-top:6px;padding:8px 10px;background:rgba(0,0,0,0.03);border-radius:8px;' }, [
+            el('div', { style: 'font-size:11px;color:#6B7280;font-family:var(--eg-mono,monospace);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;' }, ['Pool round — your row']),
+            el('div', { style: 'display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;font-size:14px;' }, [
+                el('strong', { style: 'font-size:18px;color:#1A1D24;' }, [`Place ${found.place || '?'}`]),
+                el('span', {}, [`${found.v ?? '?'} V — ${(found.m ?? 0) - (found.v ?? 0)} D`]),
+                pct != null ? el('span', { style: 'color:#6B7280;' }, [`(${pct}%)`]) : null,
+                el('span', {}, [`TS ${found.ts ?? '-'} / TR ${found.tr ?? '-'}`]),
+                el('span', { style: 'font-family:var(--eg-mono,monospace);' }, [`Ind ${indStr}`]),
+                el('span', { style: `padding:2px 8px;border-radius:999px;background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;` },
+                    [found.prediction || (advanced ? 'Advanced' : 'Eliminated')])
+            ].filter(Boolean))
+        ]);
     }
     function renderLiveTableauSummary(raw, myName) {
         return el('div', { class: 'td-live-meta' }, ['DE tableau fetched — bracket render pending']);
