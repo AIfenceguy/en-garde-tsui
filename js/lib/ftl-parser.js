@@ -215,286 +215,139 @@ function splitClubBlob(blob) {
  * Returns: { isDETableau: true, userFound: bool, bouts: [{ round, opponent_name, opponent_seed, opponent_club, my_score, opp_score, won, time }] }
  */
 export function parseFtlDETableau(text, userName) {
+    // Parse a pasted FTL tableau page into per-round bouts for the named user.
+    // Returns { isDETableau, userFound, bouts: [{round, opp_name, opp_seed, opp_bye,
+    //   my_score, opp_score, won, status}], startingTable }
+    //
+    // Algorithm:
+    //   1. Detect starting table size from "Table of N" header.
+    //   2. Walk lines tracking tab depth (= bracket column).
+    //   3. Collect depth-0 fencer cells in line order → they're the starting bracket
+    //      positions, indexed 0..N-1. Standard tableau pairing uses XOR:
+    //      fencer at index i is paired vs (i ^ (1 << R)) in round R.
+    //   4. Track all fencer cells (incl. higher-depth advancer labels) and score cells.
+    //   5. User's max depth → how many rounds they won. Round R bout exists iff R < log2(N).
+    //   6. Score for round R bout is nearest depth-(R+1) score cell to midpoint of
+    //      user and opp line positions.
+    // All comparisons case-INSENSITIVE per CLAUDE.md rule #7.
     if (!text || !DE_TABLEAU_RE.test(text)) return null;
     const lines = text.split(/\r?\n/);
-    const userTokens = (userName ? userName.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(t => t.length >= 3) : []);
+    const userTokens = (userName || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(t => t.length >= 3);
     if (!userTokens.length) return { isDETableau: true, userFound: false, bouts: [] };
 
-    // ---- Detect starting table size (T64, T128, T256, etc.) from header ----
-    // The header row looks like: "Table of 128\tTable of 64\tTable of 32\tTable of 16\tTable of 8\tSemi-Finals\tFinals"
-    let startingTable = 64;  // default
+    let startingTable = 64;
     for (const line of lines.slice(0, 20)) {
         const m = line.match(/Table\s+of\s+(\d+)/i);
         if (m) { startingTable = parseInt(m[1], 10); break; }
     }
-    // Generate the round-size list: e.g. starting 128 → [128, 64, 32, 16, 8, 4, 2]
-    const roundSizes = [];
-    for (let s = startingTable; s >= 2; s = Math.floor(s / 2)) roundSizes.push(s);
-
-    // ---- Phase 1: collect fencer blocks ----
-    // A block: name line "(seed) NAME" → optional data line (club + tabs + score) + ref/time lines
-    const blocks = [];
-    for (let i = 0; i < lines.length; i++) {
-        const stripped = lines[i].trim();
-        if (!stripped) continue;
-        if (lines[i].includes('\t')) continue;
-        const seedM = stripped.match(/^\((\d+T?)\)\s+(.+)$/);
-        if (!seedM) continue;
-        const seed = seedM[1];
-        const name = seedM[2];
-        if (name.includes('BYE')) continue;
-        // Skip "advancer" labels — these appear with leading tabs/spaces in raw line
-        if (/^\s+\(/.test(lines[i])) continue;
-        // Collect data + ref + time on following lines (up to next blank or next name line)
-        let club = null, score = null, timeStr = null;
-        for (let j = i + 1; j < Math.min(lines.length, i + 6); j++) {
-            const dl = lines[j];
-            const ds = dl.trim();
-            if (!ds) break;
-            // Stop at next name line
-            if (!dl.includes('\t') && /^\(\d+T?\)/.test(ds)) break;
-            // Time line
-            const tm = ds.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i);
-            if (tm) timeStr = tm[1];
-            // Ref line — skip
-            if (ds.startsWith('Ref ')) continue;
-            // Data line — has tab, may contain score
-            if (dl.includes('\t')) {
-                const cells = dl.split('\t').map(c => c.trim());
-                if (!club && cells[0]) club = cells[0];
-                const scoreM = ds.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
-                if (scoreM && !score) score = { a: parseInt(scoreM[1]), b: parseInt(scoreM[2]) };
-            }
-        }
-        const nameLower = name.toLowerCase().replace(/[^a-z\s]/g, ' ');
-        const isUser = userTokens.some(t => nameLower.includes(t));
-        blocks.push({
-            lineIndex: i, seed, name, club, score, timeStr, isUser
-        });
+    const totalRounds = Math.round(Math.log2(startingTable));
+    function roundName(R) {
+        const n = startingTable >> R;
+        if (n === 4) return 'SF';
+        if (n === 2) return 'F';
+        return 'T' + n;
     }
 
-    // ---- Phase 2: find advancer labels between blocks ----
-    // Advancer = line with leading whitespace + "(N) NAME" — NOT a top-level name line.
-    // The TAB DEPTH (number of leading tabs/spaces in groups) tells us which COLUMN
-    // the advancer sits in → which round was just won.
-    //   depth 1 → user advanced from starting table (e.g. T128 or T64) to next
-    //   depth 2 → user advanced from next round
-    //   ...
-    function countLeadingTabs(line) {
-        // count groups of "\t" or "\t " — FTL pads with optional space after each tab
+    function leadingTabs(line) {
         let cnt = 0;
         for (let i = 0; i < line.length; i++) {
             if (line[i] === '\t') cnt++;
-            else if (line[i] === ' ' && i + 1 < line.length && line[i+1] === '\t') continue;  // space before a tab — keep going
-            else if (line[i] !== ' ') break;
+            else if (line[i] === ' ') continue;
+            else break;
         }
         return cnt;
     }
 
-    function findAdvancerBetween(blockA, blockB) {
-        const from = Math.min(blockA.lineIndex, blockB.lineIndex);
-        const to = Math.max(blockA.lineIndex, blockB.lineIndex);
-        for (let k = from + 1; k < to; k++) {
-            const lk = lines[k];
-            if (/^\s+\(\d+T?\)\s+[A-Za-z]/.test(lk) && !lk.includes('—') && !lk.includes('BYE')) {
-                const m = lk.match(/\((\d+T?)\)\s+([^\t]+?)(?:\s{2,}|\t|$)/);
-                if (m) {
-                    return {
-                        seed: m[1],
-                        name: m[2].trim(),
-                        tabDepth: countLeadingTabs(lk)
-                    };
+    const depth0 = [];        // [{idx, line, seed, name, bye, aff}]
+    const allFencer = [];     // all depth ≥ 0 fencer cells
+    const scoreCells = [];    // {depth, line, score: [w, l]}
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const d = leadingTabs(line);
+        const fm = line.match(/^[\s]*\(([0-9]+T?)\)\s+(.+?)(?=\s{2,}|\t|$)/);
+        if (fm) {
+            const seed = fm[1];
+            const name = fm[2].trim();
+            const bye = /-?\s*BYE\s*-?/i.test(name);
+            // Affiliation = next non-tab non-paren non-time continuation line.
+            let aff = null;
+            const nl = lines[i + 1];
+            if (nl && nl.length && !nl.startsWith('\t') && !/^\s*\(/.test(nl) && !/^\s*\d{1,2}:\d{2}/.test(nl.trim())) {
+                const t = nl.trim();
+                if (t && (t.includes('/') || (t.split(/\s+/).length <= 3 && !/\d{2}\s*-\s*\d{2}/.test(t)))) {
+                    aff = t.split('\t')[0].trim();
                 }
             }
+            const cell = { depth: d, line: i, seed, name, bye, aff };
+            allFencer.push(cell);
+            if (d === 0) { cell.idx = depth0.length; depth0.push(cell); }
+            // Inline score on the affiliation line
+            if (nl) {
+                const sm = nl.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
+                if (sm) {
+                    const idx2 = nl.indexOf(sm[0]);
+                    // Reject Strip/time mishits
+                    if (!/Strip/.test(nl.slice(Math.max(0, idx2 - 10), idx2)) && !/^\s*\d{1,2}:\d{2}/.test(nl.slice(Math.max(0, idx2 - 10)))) {
+                        const sd = nl.slice(0, idx2).split('\t').length - 1;
+                        scoreCells.push({ depth: sd, line: i + 1, score: [parseInt(sm[1]), parseInt(sm[2])] });
+                    }
+                }
+            }
+            continue;
         }
-        return null;
-    }
-
-    // Round inference: tab depth → which column → which round size
-    // For a T128 event: column 0 = starting names, column 1 = T128 advancers (won T128, going to T64)
-    //                    column 2 = T64 advancers, column 3 = T32 advancers, etc.
-    // So a bout at columnDepth N was fenced in round = roundSizes[N-1]
-    // (e.g. for T128: depth 1 → T128, depth 2 → T64, depth 3 → T32, ...)
-    function roundFromDepth(depth) {
-        if (depth < 1) return roundSizes[0];
-        const idx = depth - 1;
-        return roundSizes[idx] || roundSizes[roundSizes.length - 1];
-    }
-
-    // ---- Phase 3: locate user ----
-    const userBlocks = blocks.filter(b => b.isUser);
-    if (!userBlocks.length) return { isDETableau: true, userFound: false, bouts: [] };
-    const userBlock = userBlocks[0];
-    const userIdx = blocks.indexOf(userBlock);
-
-    // Find all advancer labels with their tab depth
-    const advancers = [];
-    for (let k = 0; k < lines.length; k++) {
-        const lk = lines[k];
-        if (!/^\s+\(\d+T?\)\s+[A-Za-z]/.test(lk)) continue;
-        if (lk.includes('—') || lk.includes('BYE')) continue;
-        const m = lk.match(/\((\d+T?)\)\s+([^\t]+?)(?:\s{2,}|\t|$)/);
-        if (m) {
-            advancers.push({
-                lineIndex: k,
-                seed: m[1],
-                name: m[2].trim(),
-                tabDepth: countLeadingTabs(lk)
-            });
+        // Score-only line
+        const sm = line.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
+        if (sm && !/Strip/.test(line.slice(0, 30))) {
+            const idx2 = line.indexOf(sm[0]);
+            // Reject time like "10:43 AM" — already in :MM format, score wouldn't have a colon
+            const sd = line.slice(0, idx2).split('\t').length - 1;
+            scoreCells.push({ depth: sd, line: i, score: [parseInt(sm[1]), parseInt(sm[2])] });
         }
     }
 
-    // Helper: is this advancer the user themselves?
-    function advIsUser(adv) {
-        if (!adv) return false;
-        const n = adv.name.toLowerCase();
-        return userTokens.some(t => n.includes(t));
+    function userMatch(name) {
+        if (!name) return false;
+        const n = name.toLowerCase();
+        return userTokens.every(t => n.includes(t));
     }
 
-    // ---- Phase 4: build the user's bracket path ----
-    // FTL lists blocks in visual top-to-bottom order. Each T64 match = 2 adjacent blocks.
-    // Larger sub-brackets nest: T32 = 4 blocks, T16 = 8, T8 = 16, SF = 32, F = 64.
-    //
-    // For each round R (index into roundSizes), user's sub-bracket at NEXT round
-    // size = 2^(R+1) blocks. Opponent at round R+1 = winner of the OTHER half.
+    const meCell = depth0.find(f => !f.bye && userMatch(f.name));
+    if (!meCell) return { isDETableau: true, userFound: false, bouts: [], startingTable };
+    const meIdx = meCell.idx;
+    const maxUserDepth = Math.max(...allFencer.filter(c => !c.bye && userMatch(c.name)).map(c => c.depth), 0);
 
     const bouts = [];
-
-    // ---- Round 1 (starting round, T64/T128/T256): adjacent paired block ----
-    const pair = blocks[userIdx + 1] && !blocks[userIdx + 1].isUser ? blocks[userIdx + 1]
-              : (blocks[userIdx - 1] && !blocks[userIdx - 1].isUser ? blocks[userIdx - 1] : null);
-    let userStillAlive = false;
-    let lastUserAdvancerDepth = 0;
-
-    if (pair) {
-        const adv = findAdvancerBetween(userBlock, pair);
-        const userWon = adv ? advIsUser(adv) : null;
-        const sObj = pair.score || userBlock.score;
-        const sTime = pair.timeStr || userBlock.timeStr;
-        if (sObj && userWon !== null) {
-            const w = Math.max(sObj.a, sObj.b), l = Math.min(sObj.a, sObj.b);
-            bouts.push({
-                round: roundSizes[0],
-                opponent_name: pair.name,
-                opponent_seed: pair.seed,
-                opponent_club: pair.club,
-                my_score: userWon ? w : l,
-                opp_score: userWon ? l : w,
-                won: userWon,
-                time: sTime,
-                status: 'completed'
-            });
-            userStillAlive = userWon;
-            if (userWon) lastUserAdvancerDepth = 1;
-        } else {
-            // Pre-bout placeholder — no advancer yet
-            bouts.push({
-                round: roundSizes[0],
-                opponent_name: pair.name,
-                opponent_seed: pair.seed,
-                opponent_club: pair.club,
-                my_score: null, opp_score: null, won: null,
-                time: sTime, status: 'pending'
-            });
-            userStillAlive = true;  // not yet eliminated
+    for (let R = 0; R < totalRounds; R++) {
+        const oppIdx = meIdx ^ (1 << R);
+        if (oppIdx >= depth0.length) break;
+        const opp = depth0[oppIdx];
+        const won = maxUserDepth >= R + 1;
+        let myScore = null, oppScore = null;
+        if (!opp.bye) {
+            const mid = (meCell.line + opp.line) / 2;
+            const targetDepth = R + 1;
+            const cands = scoreCells.filter(s => s.depth === targetDepth);
+            cands.sort((a, b) => Math.abs(a.line - mid) - Math.abs(b.line - mid));
+            const best = cands[0];
+            if (best && Math.abs(best.line - mid) <= 12) {
+                const [w, l] = best.score;
+                if (won) { myScore = w; oppScore = l; } else { myScore = l; oppScore = w; }
+            }
         }
+        bouts.push({
+            round: roundName(R),
+            opponent_name: opp.name,
+            opponent_seed: opp.seed,
+            opponent_club: null,
+            my_score: myScore,
+            opp_score: oppScore,
+            won,
+            time: null,
+            status: 'completed'
+        });
+        if (!won) break;
     }
-
-    // ---- Rounds 2+ : trace bracket forward through advancer chain ----
-    if (userStillAlive && roundSizes.length > 1) {
-        for (let r = 1; r < roundSizes.length; r++) {
-            // Sub-bracket size at this round = 2^(r+1) blocks
-            const subSize = Math.pow(2, r + 1);
-            const halfSize = subSize / 2;
-            // Sub-bracket spans blocks [bStart .. bEnd]
-            const bStart = Math.floor(userIdx / subSize) * subSize;
-            const bEnd = Math.min(bStart + subSize - 1, blocks.length - 1);
-            // User's half vs opponent's half
-            const userHalf = userIdx < bStart + halfSize ? 'first' : 'second';
-            const oppHalfStart = userHalf === 'first' ? bStart + halfSize : bStart;
-            const oppHalfEnd = Math.min(oppHalfStart + halfSize - 1, blocks.length - 1);
-            if (oppHalfStart >= blocks.length) break;
-
-            const oppHalfLineStart = blocks[oppHalfStart].lineIndex;
-            const oppHalfLineEnd = oppHalfEnd + 1 < blocks.length ? blocks[oppHalfEnd + 1].lineIndex : Infinity;
-
-            // The opponent at this round = advancer at depth r within the opp half.
-            // (depth r = winner of round r, i.e. who advances FROM that round TO round r+1)
-            const oppHalfAdvancers = advancers.filter(a =>
-                a.tabDepth === r &&
-                a.lineIndex >= oppHalfLineStart &&
-                a.lineIndex < oppHalfLineEnd
-            );
-
-            // The expected user-advancer at this round — if present, user won this round
-            const userHalfLineStart = blocks[userHalf === 'first' ? bStart : bStart + halfSize].lineIndex;
-            const userHalfLineEnd = (userHalf === 'first' ? bStart + halfSize : bEnd + 1) < blocks.length
-                ? blocks[(userHalf === 'first' ? bStart + halfSize : bEnd + 1)].lineIndex
-                : Infinity;
-            const userAdvancerThisRound = advancers.find(a =>
-                a.tabDepth === r &&
-                a.lineIndex >= userHalfLineStart &&
-                a.lineIndex < userHalfLineEnd &&
-                advIsUser(a)
-            );
-
-            // Opponent identity
-            let oppName = null, oppSeed = null;
-            if (oppHalfAdvancers.length) {
-                // Take the last one (deepest in text = most-finalized)
-                const adv = oppHalfAdvancers[oppHalfAdvancers.length - 1];
-                oppName = adv.name; oppSeed = adv.seed;
-            }
-
-            // Round result: did the user advance from THIS round?
-            // Look at depth r+1 user-advancers (means user won round r+1 — past this one)
-            const userAdvancerNextRound = advancers.find(a =>
-                a.tabDepth === r + 1 && advIsUser(a)
-            );
-
-            // Score for THIS round bout (if completed): look near user's block for a score+time
-            // matching round r. Simplest: skip score on predicted bouts.
-            let status = 'predicted';
-            let my_score = null, opp_score = null, won = null, time = null;
-
-            // If user lost in a previous round, no further bouts
-            if (!userStillAlive) break;
-
-            // If we have a userAdvancerThisRound, user won this round → completed + V
-            // If round r+1 still has user-advancer presence, user won → completed
-            // Otherwise → predicted
-            if (userAdvancerNextRound && userAdvancerNextRound.tabDepth >= r + 1) {
-                // User won at least up through round r+1, so round r was a victory.
-                // We don't always have the explicit score on this row — leave null for now.
-                status = 'completed';
-                won = true;
-                userStillAlive = true;
-            } else if (userAdvancerThisRound) {
-                // User has an advancer at exactly depth r → reached round r+1
-                status = 'completed';
-                won = true;
-                userStillAlive = true;
-            } else {
-                status = 'predicted';
-                userStillAlive = false; // we don't know yet — but stop building deeper predictions
-            }
-
-            if (oppName || status === 'predicted') {
-                bouts.push({
-                    round: roundSizes[r],
-                    opponent_name: oppName || '(winner of upper bracket)',
-                    opponent_seed: oppSeed,
-                    opponent_club: null,
-                    my_score, opp_score, won, time,
-                    status
-                });
-            }
-
-            // If predicted, only show 1 hop ahead (don't speculate further)
-            if (status === 'predicted') break;
-        }
-    }
-
     return { isDETableau: true, userFound: true, bouts, startingTable };
 }
 
