@@ -362,14 +362,23 @@ export function parseFtlDETableau(text, userName) {
         const won = maxUserDepth >= R + 1;
         let myScore = null, oppScore = null;
         if (!opp.bye) {
-            // Score for round R bout = depth-(R+1) score cell CLOSEST to the user's
-            // depth-0 line (because scores typically appear near the user/opp affiliations).
+            // Score for round R bout lives at depth-(R+1), within the line range of
+            // user's sub-bracket of size 2^(R+1) depth-0 positions.
             const targetDepth = R + 1;
-            const cands = scoreCells.filter(s => s.depth === targetDepth);
-            // Score is associated with the bracket pair. For the user's bracket, the
-            // closest one within a reasonable distance is the right one.
+            const subSize = 1 << (R + 1);
+            const subBase = meIdx & ~(subSize - 1);
+            const subEnd = Math.min(subBase + subSize, depth0.length);
+            const lineMin = depth0[subBase].line;
+            const lineMax = subEnd < depth0.length ? depth0[subEnd].line : Infinity;
+            // (Allow score to be 1-2 lines AFTER lineMax in case of trailing score line.)
+            const cands = scoreCells.filter(s =>
+                s.depth === targetDepth &&
+                s.line >= lineMin &&
+                s.line <= lineMax + 3
+            );
+            // Within the sub-bracket, there should be exactly ONE score at this depth
+            // for the round R bout. If multiple, prefer closest to user line.
             cands.sort((a, b) => Math.abs(a.line - meCell.line) - Math.abs(b.line - meCell.line));
-            // Also try near opp's depth-0 line as backup
             const best = cands[0];
             if (best) {
                 const [w, l] = best.score;
