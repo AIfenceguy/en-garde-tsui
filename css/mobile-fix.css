@@ -1,0 +1,89 @@
+/* mobile-fix.css — iPhone / small-screen defensive rules.
+   Loaded AFTER style.css and apple.css so these rules win.
+
+   Targets v51 issues on iPhone 13 Pro Max (430px viewport):
+   - iOS auto-zoom on <input> focus when font-size < 16px
+   - Bottom-nav covered by the iOS home indicator
+   - Long unbreakable strings forcing horizontal scroll
+   - Modals authored at max-width: 480px overflowing 430px viewport
+   - Top bar overlapping iOS status bar / notch
+*/
+
+/* 1. Prevent any source of horizontal scroll. */
+html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+}
+
+/* 2. Long unbreakable words (URLs, FTL fencer hashes) wrap instead of overflowing. */
+.app, .card, .weak-card, .td-live-card, .coach-tip, .level-grid, p, blockquote, .scoreline {
+    overflow-wrap: anywhere;
+    word-wrap: break-word;
+}
+
+/* 3. iOS Safari auto-zooms <input> if its font-size is < 16px on focus.
+      Force >= 16px to stop the unwanted zoom-in. */
+input, textarea, select {
+    font-size: max(16px, 1em);
+}
+
+/* 4. Respect iOS safe areas (notch + home indicator). */
+.topbar {
+    padding-top: max(0px, env(safe-area-inset-top));
+}
+.bottom-nav {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+/* 5. Modal sheets should never exceed viewport width on phones. */
+.td-sheet {
+    max-width: min(480px, calc(100vw - 16px)) !important;
+    box-sizing: border-box;
+}
+
+/* 6. Eyebrow / kicker labels (mono uppercase) wrap on tiny screens instead of bleeding. */
+.label, [class*='eyebrow'], .kicker, .weak-eyebrow, .weak-sub,
+.td-live-eyebrow, .td-sheet-eye, .stat-eyebrow {
+    white-space: normal;
+    word-spacing: 0;
+}
+
+/* 7. Drill-tag text inside weakness panels — wraps gracefully under PRESSURE badge. */
+.weak-play-tag {
+    word-break: break-word;
+    flex: 1 1 60%;
+    min-width: 0;
+}
+
+/* 8. Score pills and chips in long lists wrap. */
+.chips, .chip-row {
+    flex-wrap: wrap;
+}
+
+/* 9. Pool grid scrolls horizontally on phones instead of stretching the page. */
+.td-grid-wrap, table.td-grid {
+    max-width: 100%;
+    overflow-x: auto;
+    display: block;
+}
+
+/* 10. Boss-battle eyebrow text on dashboard wraps to 2 lines instead of overflowing. */
+.label-row {
+    flex-wrap: wrap;
+}
+.label-row .label {
+    flex: 0 1 auto;
+}
+
+/* 11. Coach card on dashboard — make sure inner flex rows wrap. */
+section.card div[style*='display:flex'] {
+    flex-wrap: wrap;
+}
+
+/* 12. The Cowork browser-extension sidebar / glow-border overlay (z-index 2147483647)
+       isn't ours — but it can intercept taps. Disable pointer events when present
+       so taps reach the app. */
+#claude-agent-glow-border,
+.ue-sidebar-container {
+    pointer-events: none !important;
+}
