@@ -2,6 +2,10 @@
 // Anon key is RLS-protected; safe to commit if you choose.
 // See README §1 for setup.
 
-export const SUPABASE_URL = 'https://kkqvlgeaoosmlzdgjopn.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtrcXZsZ2Vhb29zbWx6ZGdqb3BuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMjI2NzksImV4cCI6MjA5MzY5ODY3OX0.KYZlCSpgPSbSrO-5EtS9m5aqdScJsUNqN0s5_ceezi8';
+// foiliq project (kyfkiigbiwhczrtnlivc) — En Garde backend.
+// The previous project (kkqvlgeaoosmlzdgjopn) was auto-deleted by Supabase
+// after prolonged free-tier pause. If sign-in stops working with "Failed to
+// fetch," the project may be paused again — restore it in the dashboard.
+export const SUPABASE_URL = 'https://kyfkiigbiwhczrtnlivc.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5ZmtpaWdiaXdoY3pydG5saXZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MDA3NzMsImV4cCI6MjA4OTQ3Njc3M30.Q2RPpEkQyaVtcS0q9wTu6r0p8unbVzuhWqti1PMXDxI';
 export const REDIRECT_TO = null;
