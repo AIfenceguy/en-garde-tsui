@@ -2,7 +2,7 @@
 // Caches the static shell so the app loads when wifi is bad at venues.
 // Mutations go through the in-app offline queue (lib/offline.js), not the SW.
 
-const SHELL_CACHE = 'en-garde-shell-v59';
+const SHELL_CACHE = 'en-garde-shell-v60';
 const SHELL_FILES = [
     './',
     './index.html',
@@ -79,26 +79,32 @@ self.addEventListener('fetch', (e) => {
     if (e.request.method !== 'GET') return;
     if (url.origin !== self.location.origin) return;
 
+    // Network-first, falling back to cache.
+    //
+    // This was previously cache-first with background revalidation, which meant
+    // every deploy stayed invisible until the *second* load — so a fix would
+    // appear to have done nothing, and a half-updated mix of old HTML with new
+    // modules could be served. Offline still works: the cache is the fallback,
+    // and it is refreshed on every successful fetch.
     e.respondWith(
-        caches.match(e.request).then((cached) => {
-            if (cached) {
-                // revalidate in background
-                fetch(e.request)
-                    .then((res) => {
-                        if (res.ok) caches.open(SHELL_CACHE).then((c) => c.put(e.request, res));
-                    })
-                    .catch(() => {});
-                return cached;
-            }
-            return fetch(e.request)
-                .then((res) => {
-                    if (res.ok) {
-                        const clone = res.clone();
-                        caches.open(SHELL_CACHE).then((c) => c.put(e.request, clone));
-                    }
-                    return res;
-                })
-                .catch(() => caches.match('./index.html'));
-        })
+        fetch(e.request)
+            .then((res) => {
+                if (res.ok) {
+                    const clone = res.clone();
+                    caches.open(SHELL_CACHE).then((c) => c.put(e.request, clone));
+                }
+                return res;
+            })
+            .catch(async () => {
+                const cached = await caches.match(e.request);
+                if (cached) return cached;
+                // Offline on a route we never cached: hand back the shell so the
+                // hash router can still render something.
+                if (e.request.mode === 'navigate') {
+                    const shell = await caches.match('./index.html');
+                    if (shell) return shell;
+                }
+                return Response.error();
+            })
     );
 });
