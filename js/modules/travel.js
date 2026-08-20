@@ -116,10 +116,29 @@ export async function mountTravel(root) {
             .slice()
             .sort((a, b) => new Date(a.observed_at) - new Date(b.observed_at));
 
-        const latest = prices.length ? prices[prices.length - 1] : null;
+        // A single check writes one row per airport, all sharing a timestamp,
+        // so "the last row" is arbitrary and was showing the most expensive
+        // airport as the headline. What matters is the cheapest fare on the
+        // most recent day we looked.
+        const dayOf = (p) => String(p.observed_at).slice(0, 10);
+        const latestDay = prices.length ? dayOf(prices[prices.length - 1]) : null;
+        const latestBatch = prices.filter((p) => dayOf(p) === latestDay);
+        const latest = latestBatch.length
+            ? latestBatch.reduce((m, p) => (Number(p.price) < Number(m.price) ? p : m), latestBatch[0])
+            : null;
         const cheapest = prices.length
             ? prices.reduce((m, p) => (Number(p.price) < Number(m.price) ? p : m), prices[0])
             : null;
+
+        // One point per day (that day's best fare), so the curve tracks the
+        // decision instead of zig-zagging between airports.
+        const dailyBest = Array.from(
+            prices.reduce((map, p) => {
+                const d = dayOf(p);
+                if (!map.has(d) || Number(p.price) < Number(map.get(d).price)) map.set(d, p);
+                return map;
+            }, new Map()).entries()
+        ).sort((a, b) => a[0].localeCompare(b[0])).map(([, p]) => p);
 
         const card = el('div', { class: 'card bordered-accent', style: { marginBottom: '10px' } });
 
@@ -157,6 +176,9 @@ export async function mountTravel(root) {
                         fontSize: '30px', fontWeight: '700', fontFamily: 'var(--mono)'
                     }
                 }, [money(cur)]),
+                latest.origin
+                    ? el('span', { style: { color: INK, fontSize: '13px', fontFamily: 'var(--mono)', fontWeight: '600' } }, [`from ${latest.origin}`])
+                    : null,
                 latest.airline ? el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [latest.airline]) : null,
                 typeof latest.stops === 'number'
                     ? el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [latest.stops === 0 ? 'nonstop' : `${latest.stops} stop${latest.stops === 1 ? '' : 's'}`])
@@ -218,10 +240,11 @@ export async function mountTravel(root) {
                 }
             }
 
-            card.appendChild(sparkline(prices));
+            if (dailyBest.length > 1) card.appendChild(sparkline(dailyBest));
 
             card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '11px', marginTop: '4px', fontFamily: 'var(--mono)' } }, [
-                `${prices.length} check${prices.length === 1 ? '' : 's'}`,
+                // days looked, not rows written - one check writes a row per airport
+                `checked ${dailyBest.length} day${dailyBest.length === 1 ? '' : 's'}`,
                 w.last_checked_at ? ` · last ${fmtDate(w.last_checked_at.slice(0, 10))}` : ''
             ]));
 
