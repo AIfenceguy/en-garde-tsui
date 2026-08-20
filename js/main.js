@@ -19,6 +19,7 @@ import { mountTournamentDay } from './modules/tournament-day.js';
 import { mountImportV1 } from './modules/import_v1.js';
 import { mountVideos } from './modules/videos.js';
 import { mountTravel } from './modules/travel.js';
+import { mountStyle } from './modules/style.js';
 
 const APP = document.getElementById('app');
 
@@ -36,6 +37,7 @@ defineRoute('physical', mountPhysical);
 defineRoute('mental', mountMental);
 defineRoute('lessons', mountLessons);
 defineRoute('videos', mountVideos);
+defineRoute('style', mountStyle);
 defineRoute('travel', mountTravel);
 defineRoute('tournaments', mountTournaments);
 defineRoute('tournaments/day', mountTournamentDay);
