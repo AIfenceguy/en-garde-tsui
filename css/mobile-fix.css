@@ -87,3 +87,13 @@ section.card div[style*='display:flex'] {
 .ue-sidebar-container {
     pointer-events: none !important;
 }
+
+/* 13. Role-aware bottom nav.
+       Travel is parent-only planning; Style is a fencer's own model and the
+       parent profile has none. Showing both to everyone pushed the bar to nine
+       cramped items, so each role gets the eight that apply to it. The nav uses
+       grid-auto-flow, so a hidden item simply leaves the row.
+       Only ever sets display:none, so the shown state keeps whatever layout
+       the other nav links already use. */
+body:not([data-active-role='parent']) #bottom-nav a[data-route='travel'] { display: none; }
+body[data-active-role='parent']       #bottom-nav a[data-route='style']  { display: none; }

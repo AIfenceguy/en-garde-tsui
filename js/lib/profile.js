@@ -14,11 +14,10 @@ export function mountProfileSwitcher() {
         const active = profiles.find((p) => p.id === activeProfileId);
         $('.profile-name', btn).textContent = active?.name || 'Profile';
 
-        // A fencer with their own login only ever has one profile: drop the
-        // caret so the button does not look like it hides something.
-        const soloFencer = profiles.length === 1;
+        // Keep the caret even for a single-profile fencer: the menu is the only
+        // route to Sign out, and hiding it made the button look inert.
         const caret = $('.caret', btn);
-        if (caret) caret.style.display = soloFencer ? 'none' : '';
+        if (caret) caret.style.display = '';
 
         clear(menu);
         for (const p of profiles) {
@@ -37,9 +36,21 @@ export function mountProfileSwitcher() {
             );
         }
         menu.appendChild(
-            el('button', { onclick: () => signOut() }, [
+            el('button', {
+                style: {
+                    borderTop: '1px solid rgba(0,0,0,0.08)',
+                    marginTop: '4px',
+                    color: '#9b2230',
+                    fontWeight: '600'
+                },
+                onclick: async (e) => {
+                    e.stopPropagation();
+                    e.currentTarget.textContent = 'Signing out…';
+                    await signOut();
+                }
+            }, [
                 el('span', { class: 'mono dim' }, ['↩']),
-                el('span', {}, ['Sign out'])
+                el('span', { style: { color: '#9b2230' } }, ['Sign out'])
             ])
         );
     }

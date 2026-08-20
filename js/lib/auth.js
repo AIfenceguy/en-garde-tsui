@@ -47,10 +47,24 @@ export async function setPassword(password) {
 
 
 export async function signOut() {
-    await supa.auth.signOut();
+    // Never let a failed network call strand someone in a signed-in shell:
+    // clear the stored session regardless, then hard-navigate.
+    try {
+        await supa.auth.signOut({ scope: 'local' });
+    } catch (e) {
+        console.warn('[auth] signOut call failed, clearing locally anyway', e);
+    }
+    try {
+        localStorage.removeItem('en-garde-tsui-auth');
+        localStorage.removeItem('en-garde.activeProfileId');
+    } catch (_) { /* private mode */ }
+
     setState({ session: null, profiles: [], activeProfileId: null });
-    location.hash = '';
-    location.reload();
+    document.body.setAttribute('data-active-role', '');
+
+    // replace() rather than hash + reload: that left the URL sitting on a bare
+    // "#" and reloaded into the same cached view.
+    location.replace(location.pathname);
 }
 
 // Default profile rows for a new family.
