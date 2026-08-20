@@ -19,6 +19,7 @@ const CATEGORIES = [
     { slug: 'conditioning', label: 'Conditioning' },
     { slug: 'mobility',     label: 'Mobility' },
     { slug: 'footwork',     label: 'Footwork' },
+    { slug: 'blade',        label: 'Blade' },
     { slug: 'core',         label: 'Core' },
     { slug: 'recovery',     label: 'Recovery' }
 ];
