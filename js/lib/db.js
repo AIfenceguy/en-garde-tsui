@@ -42,7 +42,9 @@ export function requireActiveProfile() {
 export async function listBouts({ limit = 30, opponentId = null } = {}) {
     const pid = activeProfileId();
     if (!pid) return [];
-    let q = supa.from('bouts').select('*').eq('profile_id', pid).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(limit);
+    // .is('deleted_at', null) everywhere: rows are soft-deleted, so without this
+    // filter "deleted" entries would reappear in every list.
+    let q = supa.from('bouts').select('*').eq('profile_id', pid).is('deleted_at', null).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(limit);
     if (opponentId) q = q.eq('opponent_id', opponentId);
     const { data, error } = await q;
     if (error) throw error;
@@ -63,6 +65,7 @@ export async function listOpponents() {
         .from('opponents')
         .select('*')
         .eq('profile_id', pid)
+        .is('deleted_at', null)
         .order('name');
     if (error) throw error;
     return data || [];
@@ -174,6 +177,7 @@ export async function listPrivateLessons(limit = 30) {
         .from('private_lessons')
         .select('*')
         .eq('profile_id', pid)
+        .is('deleted_at', null)
         .order('date', { ascending: false })
         .limit(limit);
     if (error) throw error;
@@ -186,6 +190,7 @@ export async function listGroupLessons(limit = 30) {
         .from('group_lessons')
         .select('*')
         .eq('profile_id', pid)
+        .is('deleted_at', null)
         .order('date', { ascending: false })
         .limit(limit);
     if (error) throw error;
@@ -199,6 +204,7 @@ export async function listTournaments() {
         .from('tournaments')
         .select('*')
         .eq('profile_id', pid)
+        .is('deleted_at', null)
         .order('start_date');
     if (error) throw error;
     return data || [];
@@ -211,6 +217,7 @@ export async function nextTournament() {
         .from('tournaments')
         .select('*')
         .eq('profile_id', pid)
+        .is('deleted_at', null)
         .gte('start_date', today)
         .order('start_date')
         .limit(1)

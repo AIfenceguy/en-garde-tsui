@@ -64,7 +64,13 @@ export async function renderGroupLessonsTab(container) {
                 el('button', { type: 'button', style: linkBtnStyle, onclick: () => openForm(l) }, ['edit']),
                 el('button', { type: 'button', style: dangerBtnStyle, onclick: async () => {
                     if (!confirm('Delete this lesson?')) return;
-                    await safeWrite({ table: 'group_lessons', op: 'delete', payload: {}, match: { id: l.id } });
+                    // Soft delete: gone from their view, but recoverable.
+                    await safeWrite({
+                        table: 'group_lessons',
+                        op: 'update',
+                        payload: { deleted_at: new Date().toISOString() },
+                        match: { id: l.id }
+                    });
                     toast('Deleted');
                     renderGroupLessonsTab(container);
                 } }, ['delete'])

@@ -88,6 +88,32 @@ export async function mountVideos(root, params = {}) {
         style: { color: INK_MUTE, marginTop: '-4px', fontSize: '14px' }
     }, ['Watch a bout, log what you saw. Come back to it before the next tournament.']));
 
+    // The fencer they are modelling their game on - gives the study a target
+    // instead of watching whatever autoplay serves up.
+    if (profile.style_model) {
+        const query = encodeURIComponent(`${profile.style_model} fencing foil`);
+        root.appendChild(el('div', {
+            class: 'card',
+            style: { marginTop: '12px', borderLeft: '3px solid var(--accent)' }
+        }, [
+            el('div', { class: 'kicker', style: { color: INK_MUTE } }, ['Your style model']),
+            el('div', { style: { color: INK, fontSize: '17px', fontWeight: '600', marginTop: '2px' } }, [profile.style_model]),
+            profile.style_model_note
+                ? el('p', { style: { color: INK_MUTE, fontSize: '13px', lineHeight: '1.5', margin: '6px 0 0' } }, [profile.style_model_note])
+                : null,
+            el('a', {
+                href: `https://www.youtube.com/results?search_query=${query}`,
+                target: '_blank',
+                rel: 'noopener',
+                style: {
+                    display: 'inline-block', marginTop: '10px', color: 'var(--accent)',
+                    fontFamily: 'var(--eg-mono, monospace)', fontSize: '11px', fontWeight: '700',
+                    letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none'
+                }
+            }, [`find ${profile.style_model} bouts →`])
+        ]));
+    }
+
     const taxos = await loadTaxonomies();
     const scoringTactics = taxos.tactics.filter((t) => t.kind === 'scoring');
 
@@ -95,6 +121,7 @@ export async function mountVideos(root, params = {}) {
         .from('video_reflections')
         .select('*')
         .eq('profile_id', profile.id)
+        .is('deleted_at', null)
         .order('watched_date', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(50);
@@ -255,7 +282,14 @@ export async function mountVideos(root, params = {}) {
                     style: Object.assign({}, linkBtnStyle, { color: '#9b2230' }),
                     onclick: async () => {
                         if (!confirm('Delete this video log?')) return;
-                        await safeWrite({ table: 'video_reflections', op: 'delete', payload: {}, match: { id: v.id } });
+                        // Soft delete: it leaves their view immediately, but the row is
+                        // kept so a mistap is recoverable and long-term analysis stays whole.
+                        await safeWrite({
+                            table: 'video_reflections',
+                            op: 'update',
+                            payload: { deleted_at: new Date().toISOString() },
+                            match: { id: v.id }
+                        });
                         const i = videos.findIndex((x) => x.id === v.id);
                         if (i >= 0) videos.splice(i, 1);
                         toast('Deleted');

@@ -65,7 +65,13 @@ export async function mountTournaments(root, params) {
                 el('button', { class: 'btn-link', onclick: () => openForm(t) }, ['edit']),
                 el('button', { class: 'btn-link', style: { color: 'var(--danger)' }, onclick: async () => {
                     if (!confirm('Delete this tournament?')) return;
-                    await safeWrite({ table: 'tournaments', op: 'delete', payload: {}, match: { id: t.id } });
+                    // Soft delete: gone from their view, but recoverable.
+                    await safeWrite({
+                        table: 'tournaments',
+                        op: 'update',
+                        payload: { deleted_at: new Date().toISOString() },
+                        match: { id: t.id }
+                    });
                     toast('Deleted');
                     await refreshTournamentCountdown();
                     mountTournaments(root, {});

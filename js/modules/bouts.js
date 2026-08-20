@@ -542,7 +542,13 @@ export async function mountBoutDetail(root, params) {
                 btn.disabled = true;
                 btn.textContent = 'Deleting…';
                 try {
-                    await safeWrite({ table: 'bouts', op: 'delete', payload: {}, match: { id: b.id } });
+                    // Soft delete: gone from their view, but recoverable.
+                    await safeWrite({
+                        table: 'bouts',
+                        op: 'update',
+                        payload: { deleted_at: new Date().toISOString() },
+                        match: { id: b.id }
+                    });
                     toast('Deleted');
                     go('bouts');
                 } catch (err) {
