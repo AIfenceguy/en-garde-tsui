@@ -14,6 +14,12 @@ export function mountProfileSwitcher() {
         const active = profiles.find((p) => p.id === activeProfileId);
         $('.profile-name', btn).textContent = active?.name || 'Profile';
 
+        // A fencer with their own login only ever has one profile: drop the
+        // caret so the button does not look like it hides something.
+        const soloFencer = profiles.length === 1;
+        const caret = $('.caret', btn);
+        if (caret) caret.style.display = soloFencer ? 'none' : '';
+
         clear(menu);
         for (const p of profiles) {
             menu.appendChild(

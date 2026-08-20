@@ -61,6 +61,8 @@ const DEFAULT_PROFILES = [
 ];
 
 export async function loadOrCreateProfiles(userId) {
+    // RLS returns the profiles this user may see: a fencer signing in with
+    // their own login gets exactly one row; the parent account gets all three.
     const { data: existing, error } = await supa
         .from('profiles')
         .select('*')
@@ -68,22 +70,34 @@ export async function loadOrCreateProfiles(userId) {
     if (error) throw error;
 
     let profiles = existing || [];
-    const have = new Set(profiles.map((p) => p.role));
-    const missing = DEFAULT_PROFILES.filter((p) => !have.has(p.role));
-    if (missing.length) {
-        const inserts = missing.map((p) => ({ ...p, owner_user_id: userId }));
+
+    // Only seed the family's default profiles on a genuinely empty account.
+    // Without this guard, a fencer whose own login returns just their row
+    // would trigger creation of duplicate Raedyn/Kaylan/Parent profiles.
+    if (!profiles.length) {
+        const inserts = DEFAULT_PROFILES.map((p) => ({ ...p, owner_user_id: userId }));
         const { data: created, error: e2 } = await supa
             .from('profiles')
             .insert(inserts)
             .select();
         if (e2) throw e2;
-        profiles = profiles.concat(created || []);
+        profiles = created || [];
     }
     profiles.sort((a, b) =>
         ['raedyn', 'kaylan', 'parent'].indexOf(a.role) -
         ['raedyn', 'kaylan', 'parent'].indexOf(b.role)
     );
     setState({ profiles });
+
+    // A fencer signing in with their own account is pinned to their profile —
+    // no switching to a sibling's journal. The parent account still chooses.
+    const own = profiles.find((p) => p.login_user_id === userId);
+    if (own && profiles.length === 1) {
+        setState({ activeProfileId: own.id });
+        localStorage.setItem('en-garde.activeProfileId', own.id);
+        applyActiveRole();
+        return profiles;
+    }
 
     // restore last active profile from localStorage
     const last = localStorage.getItem('en-garde.activeProfileId');
