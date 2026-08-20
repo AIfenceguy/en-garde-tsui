@@ -17,6 +17,8 @@ import { mountLessons } from './modules/lessons.js';
 import { mountTournaments } from './modules/tournaments.js';
 import { mountTournamentDay } from './modules/tournament-day.js';
 import { mountImportV1 } from './modules/import_v1.js';
+import { mountVideos } from './modules/videos.js';
+import { mountTravel } from './modules/travel.js';
 
 const APP = document.getElementById('app');
 
@@ -33,6 +35,8 @@ defineRoute('opponents/scout', mountScoutForm);
 defineRoute('physical', mountPhysical);
 defineRoute('mental', mountMental);
 defineRoute('lessons', mountLessons);
+defineRoute('videos', mountVideos);
+defineRoute('travel', mountTravel);
 defineRoute('tournaments', mountTournaments);
 defineRoute('tournaments/day', mountTournamentDay);
 defineRoute('import-v1', mountImportV1);

@@ -1,9 +1,12 @@
-// Hub view for §3.1 + §3.2. Sub-tabs: Private | Group.
+// Hub view for §3.1 + §3.2 + §3.7. Sub-tabs: Private | Group | Video.
+// The three ways the boys learn: from a coach one-on-one, from a class, and
+// from watching real bouts.
 
 import { el, $ } from '../lib/util.js';
 import { activeProfile } from '../lib/state.js';
 import { renderPrivateLessonsTab } from './private_lessons.js';
 import { renderGroupLessonsTab } from './group_lessons.js';
+import { mountVideos } from './videos.js';
 
 const STORE_KEY = 'en-garde.lessonsTab';
 
@@ -20,7 +23,8 @@ export async function mountLessons(root, params) {
 
     const tabs = el('div', { class: 'chips', style: { marginBottom: '14px' } }, [
         el('button', { class: 'chip', 'data-tab': 'private', onclick: () => switchTab('private') }, ['Private']),
-        el('button', { class: 'chip', 'data-tab': 'group',   onclick: () => switchTab('group')   }, ['Group'])
+        el('button', { class: 'chip', 'data-tab': 'group',   onclick: () => switchTab('group')   }, ['Group']),
+        el('button', { class: 'chip', 'data-tab': 'video',   onclick: () => switchTab('video')   }, ['Video'])
     ]);
     root.appendChild(tabs);
 
@@ -33,8 +37,9 @@ export async function mountLessons(root, params) {
             c.setAttribute('aria-pressed', c.dataset.tab === name ? 'true' : 'false');
         }
         body.innerHTML = '';
-        if (name === 'private') renderPrivateLessonsTab(body);
-        else                    renderGroupLessonsTab(body);
+        if      (name === 'private') renderPrivateLessonsTab(body);
+        else if (name === 'video')   mountVideos(body, { embedded: true });
+        else                         renderGroupLessonsTab(body);
     }
     switchTab(initial);
 }
