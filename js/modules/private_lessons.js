@@ -7,6 +7,7 @@ import { activeProfile } from '../lib/state.js';
 import { listPrivateLessons, loadTaxonomies } from '../lib/db.js';
 import { safeWrite } from '../lib/offline.js';
 import { chipGroup } from '../lib/chips.js';
+import { coachPicker } from '../lib/coaches.js';
 
 export async function renderPrivateLessonsTab(container) {
     const profile = activeProfile();
@@ -156,9 +157,10 @@ export async function renderPrivateLessonsTab(container) {
         const form = el('form', { class: 'card', onsubmit: async (e) => { e.preventDefault(); await save(); } });
         formMount.appendChild(form);
 
+        const coach = coachPicker({ value: editing?.coach || '' });
         form.appendChild(el('div', { class: 'row' }, [
             el('div', { class: 'field' }, [el('label', {}, ['Date']), el('input', { type: 'date', name: 'date', value: editing?.date || todayISO(), required: true })]),
-            el('div', { class: 'field' }, [el('label', {}, ['Coach']), el('input', { type: 'text', name: 'coach', value: editing?.coach || '' })]),
+            el('div', { class: 'field' }, [el('label', {}, ['Coach']), coach]),
             el('div', { class: 'field' }, [el('label', {}, ['Minutes']), el('input', { type: 'number', name: 'duration_min', value: editing?.duration_min ?? '' })])
         ]));
 
@@ -224,7 +226,7 @@ export async function renderPrivateLessonsTab(container) {
             const payload = {
                 profile_id: profile.id,
                 date: fd.get('date'),
-                coach: (fd.get('coach') || '').toString().trim() || null,
+                coach: coach.getValue(),
                 duration_min: fd.get('duration_min') ? Number(fd.get('duration_min')) : null,
                 topics,
                 new_skill_introduced: !!newSkill.checked,

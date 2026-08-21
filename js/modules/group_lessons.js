@@ -7,6 +7,7 @@ import { activeProfile } from '../lib/state.js';
 import { listGroupLessons, loadTaxonomies } from '../lib/db.js';
 import { safeWrite } from '../lib/offline.js';
 import { chipGroup, chipArrayEditor } from '../lib/chips.js';
+import { coachPicker } from '../lib/coaches.js';
 
 export async function renderGroupLessonsTab(container) {
     const profile = activeProfile();
@@ -84,9 +85,10 @@ export async function renderGroupLessonsTab(container) {
         const form = el('form', { class: 'card', onsubmit: async (e) => { e.preventDefault(); await save(); } });
         formMount.appendChild(form);
 
+        const instructor = coachPicker({ name: 'instructor', value: editing?.instructor || '' });
         form.appendChild(el('div', { class: 'row' }, [
             el('div', { class: 'field' }, [el('label', {}, ['Date']), el('input', { type: 'date', name: 'date', value: editing?.date || todayISO(), required: true })]),
-            el('div', { class: 'field' }, [el('label', {}, ['Instructor']), el('input', { type: 'text', name: 'instructor', value: editing?.instructor || '' })]),
+            el('div', { class: 'field' }, [el('label', {}, ['Instructor']), instructor]),
             el('div', { class: 'field' }, [el('label', {}, ['Minutes']), el('input', { type: 'number', name: 'duration_min', value: editing?.duration_min ?? '' })])
         ]));
         form.appendChild(el('div', { class: 'field' }, [el('label', {}, ['Club']), el('input', { type: 'text', name: 'club', value: editing?.club || '' })]));
@@ -153,7 +155,7 @@ export async function renderGroupLessonsTab(container) {
             const payload = {
                 profile_id: profile.id,
                 date: fd.get('date'),
-                instructor: (fd.get('instructor') || '').toString().trim() || null,
+                instructor: instructor.getValue(),
                 duration_min: fd.get('duration_min') ? Number(fd.get('duration_min')) : null,
                 club: (fd.get('club') || '').toString().trim() || null,
                 drills,
