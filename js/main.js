@@ -5,7 +5,7 @@ import { loadSession, loadOrCreateProfiles } from './lib/auth.js';
 import { mountProfileSwitcher } from './lib/profile.js';
 import { defineRoot, defineRoute, startRouter, render as routerRender } from './lib/router.js';
 import { getState, subscribe } from './lib/state.js';
-import { renderSignIn, refreshTournamentCountdown } from './views/shell.js';
+import { renderSignIn, renderNoProfile, refreshTournamentCountdown } from './views/shell.js';
 import { drain, queueSize } from './lib/offline.js';
 
 import { mountDashboard } from './modules/dashboard.js';
@@ -53,7 +53,14 @@ async function bootstrap() {
         renderSignIn(APP);
         return;
     }
-    await loadOrCreateProfiles(session.user.id);
+    const profiles = await loadOrCreateProfiles(session.user.id);
+    if (!profiles.length) {
+        // Signed in successfully, but this account has no fencer attached to
+        // it. Almost always the wrong Google account was picked, so name the
+        // account: that is the fact which makes the mistake obvious.
+        renderNoProfile(APP, session.user.email);
+        return;
+    }
     mountProfileSwitcher();
     startRouter();
     setupBottomNavActive();

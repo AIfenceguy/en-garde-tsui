@@ -1,7 +1,7 @@
 // Sign-in view (shown when no session) and the topbar countdown updater.
 
 import { el } from '../lib/util.js';
-import { signInWithGoogle, signInWithMagicLink, signInWithPassword } from '../lib/auth.js';
+import { signInWithGoogle, signInWithMagicLink, signInWithPassword, signOut } from '../lib/auth.js';
 import { isConfigured } from '../lib/supa.js';
 import { nextTournament } from '../lib/db.js';
 import { daysUntil, fmtDate } from '../lib/util.js';
@@ -112,6 +112,44 @@ export function renderSignIn(root) {
         ])
     ]);
     root.appendChild(wrap);
+}
+
+/**
+ * Signed in, but this account has no fencer attached.
+ *
+ * The account email is the whole point of this screen: the cause is almost
+ * always the wrong Google account, and naming it turns a confusing empty app
+ * into an obvious "oh, wrong login".
+ */
+export function renderNoProfile(root, email) {
+    root.innerHTML = '';
+    document.body.classList.add('is-signed-out');
+
+    const INK = 'var(--ink, #1A1D24)';
+    const MUTE = '#6B7280';
+
+    root.appendChild(el('div', { class: 'auth' }, [
+        el('div', { class: 'auth-mark' }, [
+            el('h1', { class: 'wordmark wordmark-lg' }, ['En Garde'])
+        ]),
+        el('div', { class: 'card', style: { marginTop: '20px', textAlign: 'left' } }, [
+            el('div', { class: 'label', style: { color: INK } }, ['No fencer on this account']),
+            el('p', { style: { color: INK, fontSize: '14px', lineHeight: '1.6', marginTop: '10px' } }, [
+                'You are signed in as ',
+                el('strong', { style: { color: INK } }, [email || 'this account']),
+                ', but no fencer is set up under it.'
+            ]),
+            el('p', { style: { color: MUTE, fontSize: '14px', lineHeight: '1.6', marginTop: '10px' } }, [
+                'This usually means a different Google account was picked by mistake. ',
+                'Sign out and sign back in with your own login — your logs are safe on the right account.'
+            ]),
+            el('button', {
+                class: 'btn btn-primary btn-block btn-mono-label',
+                style: { marginTop: '18px' },
+                onclick: () => signOut()
+            }, ['Sign out'])
+        ])
+    ]));
 }
 
 export async function refreshTournamentCountdown() {

@@ -67,8 +67,10 @@ export async function signOut() {
     location.replace(location.pathname);
 }
 
-// Default profile rows for a new family.
-const DEFAULT_PROFILES = [
+// Reference only. Profiles are NOT created from this any more - see the note
+// in loadOrCreateProfiles about the shadow family that auto-seeding produced.
+// A new fencer is added deliberately, not as a side effect of signing in.
+export const DEFAULT_PROFILES = [
     { name: 'Raedyn', role: 'raedyn', birth_year: 2012, primary_weapon: 'foil', accent_hex: '#a82b2b' },
     { name: 'Kaylan', role: 'kaylan', birth_year: 2014, primary_weapon: 'foil', accent_hex: '#d4af37' },
     { name: 'Parent', role: 'parent', accent_hex: '#5a7a8c' }
@@ -83,19 +85,22 @@ export async function loadOrCreateProfiles(userId) {
         .order('role');
     if (error) throw error;
 
-    let profiles = existing || [];
+    const profiles = existing || [];
 
-    // Only seed the family's default profiles on a genuinely empty account.
-    // Without this guard, a fencer whose own login returns just their row
-    // would trigger creation of duplicate Raedyn/Kaylan/Parent profiles.
+    // Deliberately NOT auto-creating profiles for an unrecognised account.
+    //
+    // This used to seed a fresh Raedyn/Kaylan/Parent set whenever an account
+    // had none. On 2026-08-21 someone tapped "Continue with Google" and picked
+    // rtsui0612@gmail.com; that account got its own silent copy of the family,
+    // and a video plus two private lessons were logged into it where the
+    // parent account could not see them. Nothing was lost, but it looked
+    // exactly like data loss, which is worse than an error message.
+    //
+    // An account with no profiles now says so, and says which account it is,
+    // so the wrong-login mistake is visible instead of invisible.
     if (!profiles.length) {
-        const inserts = DEFAULT_PROFILES.map((p) => ({ ...p, owner_user_id: userId }));
-        const { data: created, error: e2 } = await supa
-            .from('profiles')
-            .insert(inserts)
-            .select();
-        if (e2) throw e2;
-        profiles = created || [];
+        setState({ profiles: [], activeProfileId: null });
+        return [];
     }
     profiles.sort((a, b) =>
         ['raedyn', 'kaylan', 'parent'].indexOf(a.role) -
