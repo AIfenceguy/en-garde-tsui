@@ -149,6 +149,19 @@ export async function safeWrite(entry) {
             await enqueue(entry);
             return { offline: true };
         }
+        // A row-level-security refusal on a write almost always means the tab
+        // is holding a profile that no longer exists - the page was left open
+        // across a change. "violates row-level security policy" tells a
+        // thirteen-year-old nothing; say what to actually do about it.
+        const msg = String(e?.message || '');
+        if (/row-level security|row level security|42501/i.test(msg)) {
+            const friendly = new Error(
+                'This page is out of date - reload it and sign in again, then re-enter this. Nothing you saved before is lost.'
+            );
+            friendly.cause = e;
+            friendly.isStaleSession = true;
+            throw friendly;
+        }
         throw e;
     }
 }
