@@ -176,6 +176,13 @@ export async function mountTravel(root) {
                         fontSize: '30px', fontWeight: '700', fontFamily: 'var(--mono)'
                     }
                 }, [money(cur)]),
+                // Fares come back as the total for the party. Showing only that
+                // invites reading a two-seat price as a one-seat price.
+                (w.passengers > 1)
+                    ? el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [
+                        `total · ${money(cur / w.passengers)} each`
+                    ])
+                    : null,
                 latest.origin
                     ? el('span', { style: { color: INK, fontSize: '13px', fontFamily: 'var(--mono)', fontWeight: '600' } }, [`from ${latest.origin}`])
                     : null,
@@ -429,8 +436,8 @@ export async function mountTravel(root) {
                 el('input', { type: 'number', name: 'passengers', min: 1, max: 9, value: editing?.passengers ?? 1, style: inputStyle })
             ]),
             el('div', { class: 'field' }, [
-                el('label', { style: { color: INK_MUTE } }, ['Alert under ($)']),
-                el('input', { type: 'number', name: 'target_price', min: 0, placeholder: '450', value: editing?.target_price ?? '', style: inputStyle })
+                el('label', { style: { color: INK_MUTE } }, ['Alert under ($ total)']),
+                el('input', { type: 'number', name: 'target_price', min: 0, placeholder: '718', value: editing?.target_price ?? '', style: inputStyle })
             ])
         ]));
 
