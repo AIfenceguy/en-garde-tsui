@@ -167,7 +167,8 @@ export async function mountTravel(root) {
             const cur = Number(latest.price);
             const min = Number(cheapest.price);
             const isBest = cur <= min;
-            const hitTarget = w.target_price && cur <= w.target_price;
+            const perSeat = cur / (w.passengers || 1);
+            const hitTarget = w.target_price && perSeat <= w.target_price;
 
             card.appendChild(el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '8px' } }, [
                 el('span', {
@@ -175,12 +176,13 @@ export async function mountTravel(root) {
                         color: hitTarget ? GOOD : INK,
                         fontSize: '30px', fontWeight: '700', fontFamily: 'var(--mono)'
                     }
-                }, [money(cur)]),
-                // Fares come back as the total for the party. Showing only that
-                // invites reading a two-seat price as a one-seat price.
+                }, [money(cur / (w.passengers || 1))]),
+                // Per seat leads. The API hands back a party total, but nobody
+                // books that way - showing $317 for a fare Kelly bought at $159
+                // made her own flight unrecognisable.
                 (w.passengers > 1)
                     ? el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [
-                        `total · ${money(cur / w.passengers)} each`
+                        `each · ${money(cur)} for ${w.passengers}`
                     ])
                     : null,
                 latest.origin
@@ -195,18 +197,19 @@ export async function mountTravel(root) {
             // The judgement Kelly actually needs: cheap relative to what we've seen.
             const verdict = isBest
                 ? { text: 'Lowest price seen so far', color: GOOD }
-                : { text: `${money(cur - min)} above the low of ${money(min)} on ${fmtDate(cheapest.observed_at)}`, color: INK_MUTE };
+                : { text: `${money((cur - min) / (w.passengers || 1))}/seat above the low of ${money(min / (w.passengers || 1))} on ${fmtDate(cheapest.observed_at)}`, color: INK_MUTE };
             card.appendChild(el('div', { style: { color: verdict.color, fontSize: '13px', marginTop: '2px' } }, [verdict.text]));
 
             if (w.target_price) {
                 card.appendChild(el('div', {
                     style: { color: hitTarget ? GOOD : INK_MUTE, fontSize: '13px', marginTop: '2px', fontWeight: hitTarget ? '600' : '400' }
-                }, [hitTarget ? `At or below your ${money(w.target_price)} target — book it.` : `Target ${money(w.target_price)}`]));
+                }, [hitTarget ? `At or below your ${money(w.target_price)}/seat target — book it.` : `Target ${money(w.target_price)}/seat`]));
             }
 
             // Per-airport comparison: the preferred airport is listed first and
             // labelled, so a $12 saving at a farther airport is obvious rather
             // than hidden behind a single "cheapest" number.
+            const pax = w.passengers || 1;
             if (originList.length > 1) {
                 const bestBy = new Map();
                 for (const p of prices) {
@@ -234,9 +237,9 @@ export async function mountTravel(root) {
                                 style: { fontFamily: 'var(--mono)', fontWeight: '700', color: isPref ? 'var(--accent)' : INK, minWidth: '38px' }
                             }, [code]),
                             isPref ? el('span', { style: { color: 'var(--accent)', fontSize: '11px' } }, ['★']) : null,
-                            el('span', { style: { color: INK, fontFamily: 'var(--mono)' } }, [money(p.price)]),
+                            el('span', { style: { color: INK, fontFamily: 'var(--mono)' } }, [money(p.price / pax)]),
                             diff > 0
-                                ? el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [`+${money(diff)}`])
+                                ? el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [`+${money(diff / pax)}`])
                                 : el('span', { style: { color: GOOD, fontSize: '12px' } }, ['cheapest'])
                         ]);
                     });
