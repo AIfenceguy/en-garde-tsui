@@ -78,11 +78,20 @@ export async function mountTravel(root) {
         return;
     }
 
-    const { data, error } = await supa
-        .from('flight_watches')
-        .select('*, flight_prices(price, currency, airline, booking_url, stops, origin, observed_at)')
-        .is('deleted_at', null)
-        .order('depart_date');
+    const [{ data, error }, tripsRes] = await Promise.all([
+        supa.from('flight_watches')
+            .select('*, flight_prices(price, currency, airline, booking_url, stops, origin, observed_at)')
+            .is('deleted_at', null)
+            .order('depart_date'),
+        // What the trip is actually for: the competitions, and the travel
+        // constraints derived from their schedule.
+        supa.from('trip_overview').select('*').order('event_date')
+    ]);
+    const tripsByWatch = new Map();
+    for (const t of (tripsRes?.data || [])) {
+        if (!tripsByWatch.has(t.watch_id)) tripsByWatch.set(t.watch_id, []);
+        tripsByWatch.get(t.watch_id).push(t);
+    }
 
     if (error) {
         root.appendChild(el('div', { class: 'card' }, [
@@ -155,6 +164,47 @@ export async function mountTravel(root) {
 
         if (w.label) {
             card.appendChild(el('div', { class: 'kicker', style: { color: INK_MUTE } }, [w.label]));
+        }
+
+        // What the trip is for. A price with no purpose attached is the dead end
+        // Ricky ran into - this is the competition driving the dates, and the
+        // constraints that follow from its schedule.
+        const trips = tripsByWatch.get(w.id) || [];
+        if (trips.length) {
+            const box = el('div', {
+                style: {
+                    marginTop: '10px', padding: '10px 12px',
+                    background: 'rgba(0,0,0,0.03)', borderRadius: '8px'
+                }
+            });
+            box.appendChild(el('div', { class: 'kicker', style: { color: INK_MUTE } }, ['Competing']));
+            for (const t of trips) {
+                const d = new Date(t.event_date + 'T00:00:00');
+                const when = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                box.appendChild(el('div', { style: { color: INK, fontSize: '14px', marginTop: '4px' } }, [
+                    `${when} · ${t.event_name}`,
+                    t.fencer ? el('span', { style: { color: INK_MUTE } }, [` — ${t.fencer}`]) : null,
+                    t.start_time_is_placeholder
+                        ? el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [' · time TBD, planned as 8am'])
+                        : null
+                ]));
+            }
+            // The two constraints that actually decide which flights are legal.
+            const first = trips[0];
+            const last = trips[trips.length - 1];
+            box.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '8px', lineHeight: '1.6' } }, [
+                `Be on the ground by ${new Date(first.be_on_ground_by).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`,
+                el('br', {}),
+                `No return before ${String(last.no_return_before).slice(0, 5)} on ${new Date(last.event_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+            ]));
+
+            // Flag a booked return that lands before the fencer could be finished.
+            if (w.return_date && last.event_date === w.return_date) {
+                box.appendChild(el('div', {
+                    style: { color: BAD, fontSize: '13px', marginTop: '8px', fontWeight: '600' }
+                }, [`Return is the same day as ${last.event_name} — only an evening flight works.`]));
+            }
+            card.appendChild(box);
         }
 
         if (!prices.length) {
