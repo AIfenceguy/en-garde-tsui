@@ -7,6 +7,7 @@ import { activeProfile } from '../lib/state.js';
 import { renderPrivateLessonsTab } from './private_lessons.js';
 import { renderGroupLessonsTab } from './group_lessons.js';
 import { mountVideos } from './videos.js';
+import { renderCoachReview } from './coach-review.js';
 
 const STORE_KEY = 'en-garde.lessonsTab';
 
@@ -24,7 +25,8 @@ export async function mountLessons(root, params) {
     const tabs = el('div', { class: 'chips', style: { marginBottom: '14px' } }, [
         el('button', { class: 'chip', 'data-tab': 'private', onclick: () => switchTab('private') }, ['Private']),
         el('button', { class: 'chip', 'data-tab': 'group',   onclick: () => switchTab('group')   }, ['Group']),
-        el('button', { class: 'chip', 'data-tab': 'video',   onclick: () => switchTab('video')   }, ['Video'])
+        el('button', { class: 'chip', 'data-tab': 'video',   onclick: () => switchTab('video')   }, ['Video']),
+        el('button', { class: 'chip', 'data-tab': 'coach',   onclick: () => switchTab('coach')   }, ['Coach'])
     ]);
     root.appendChild(tabs);
 
@@ -39,6 +41,7 @@ export async function mountLessons(root, params) {
         body.innerHTML = '';
         if      (name === 'private') renderPrivateLessonsTab(body);
         else if (name === 'video')   mountVideos(body, { embedded: true });
+        else if (name === 'coach')   renderCoachReview(body);
         else                         renderGroupLessonsTab(body);
     }
     switchTab(initial);
