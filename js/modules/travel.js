@@ -18,6 +18,9 @@ const INK = 'var(--ink, #1A1D24)';
 // Literal, not var(--ink-mute): that token composites to ~3.1:1 on white.
 const INK_MUTE = '#6B7280';
 const GOOD = '#1f7a1f';
+// Amber-700. Explicit hex, AA on white (~5.1:1) - a warning nobody can read
+// is not a warning.
+const WARN = '#B45309';
 const BAD = '#9b2230';
 
 // Free carrier email-to-SMS gateways, so an alert costs nothing to send.
@@ -37,12 +40,20 @@ const CARRIERS = [
 // default preference; the rest are worth pricing because the saving is often
 // larger than the extra drive.
 const HOME_AIRPORTS = [
-    { code: 'ONT', name: 'Ontario' },
-    { code: 'LAX', name: 'Los Angeles' },
-    { code: 'SNA', name: 'Santa Ana' },
-    { code: 'LGB', name: 'Long Beach' },
-    { code: 'BUR', name: 'Burbank' }
+    { code: 'ONT', name: 'Ontario',     driveMinutes: 25 },
+    { code: 'LAX', name: 'Los Angeles', driveMinutes: 45 },
+    { code: 'SNA', name: 'Santa Ana',   driveMinutes: 35 },
+    { code: 'LGB', name: 'Long Beach',  driveMinutes: 40 },
+    { code: 'BUR', name: 'Burbank',     driveMinutes: 45 }
 ];
+
+// Typical off-peak drive from Rowland Heights 91748. Estimates, not routed -
+// they exist so the card can say "leave home by", which is the number a
+// traveller actually acts on. A 00:21 departure means leaving the house the
+// previous evening, and no fare comparison shows that.
+const AIRPORT_SECURITY_BUFFER_MIN = 120;
+const driveMinutesFor = (code) =>
+    (HOME_AIRPORTS.find((a) => a.code === String(code || '').toUpperCase()) || {}).driveMinutes ?? 40;
 
 const inputStyle = { color: INK };
 const selectStyle = {
@@ -80,7 +91,7 @@ export async function mountTravel(root) {
 
     const [{ data, error }, tripsRes] = await Promise.all([
         supa.from('flight_watches')
-            .select('*, flight_prices(price, currency, airline, booking_url, stops, origin, observed_at, searched_depart_date, searched_return_date)')
+            .select('*, flight_prices(price, currency, airline, booking_url, stops, origin, observed_at, searched_depart_date, searched_return_date, depart_at, arrive_at, ret_depart_at, ret_arrive_at, duration_minutes, flight_numbers, layovers, max_layover_minutes)')
             .is('deleted_at', null)
             .order('depart_date'),
         // What the trip is actually for: the competitions, and the travel
@@ -237,39 +248,133 @@ export async function mountTravel(root) {
                 el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [`per person ${MID} ${shape}`])
             ]));
 
-            // Spell the legs out. A bare "Oct 8 - Oct 12" heading over a one-way
-            // fare reads as a round trip, and a price with no date on it reads
-            // as live when it may be days old.
-            const legLine = (label, from, to, date) => el('div', {
-                style: { display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '13px', marginTop: '3px', flexWrap: 'wrap' }
-            }, [
-                el('span', {
-                    style: {
-                        color: INK_MUTE, fontSize: '11px', fontFamily: 'var(--mono)',
-                        textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: '58px'
-                    }
-                }, [label]),
-                el('span', { style: { color: INK, fontFamily: 'var(--mono)', fontWeight: '600' } }, [`${from} ${ARROW} ${to}`]),
-                date ? el('span', { style: { color: INK, fontSize: '13px' } }, [fmtDate(String(date).slice(0, 10))]) : null
-            ]);
+            // Everything a traveller needs to actually arrange the trip: when to
+            // leave the house, when the wheels leave the ground, where and for
+            // how long you are stuck, and what local time you can be collected.
+            //
+            // Times are parsed by hand rather than with `new Date(...)`: the
+            // provider sends "2026-10-08 00:21" with no zone, which Safari reads
+            // as Invalid Date while Chrome silently treats as local.
+            const parseLocal = (v) => {
+                const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(v || ''));
+                if (!m) return null;
+                return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+            };
+            const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const clock = (d) => {
+                const h = d.getHours(), ap = h < 12 ? 'AM' : 'PM';
+                return `${h % 12 === 0 ? 12 : h % 12}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
+            };
+            const dayLabel = (d) => `${DOW[d.getDay()]} ${MON[d.getMonth()]} ${d.getDate()}`;
+            const stamp = (d) => `${dayLabel(d)}, ${clock(d)}`;
+            const hm = (mins) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
 
-            card.appendChild(el('div', { style: { marginTop: '6px' } }, [
-                legLine('Fly out', latest.origin || '?', w.destination,
-                        latest.searched_depart_date || w.depart_date),
-                isRoundTrip
-                    ? legLine('Return', w.destination, latest.origin || '?', latest.searched_return_date)
-                    : el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '3px', paddingLeft: '66px' } }, [
-                        `Return not priced ${EMD} it was booked with points, so there is nothing to rebook.`
-                      ])
-            ]));
+            const stopRow = (kind, code, iso, emphasis) => {
+                const d = parseLocal(iso);
+                return el('div', {
+                    style: { display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '13px', marginTop: '2px', flexWrap: 'wrap' }
+                }, [
+                    el('span', { style: { color: INK_MUTE, fontSize: '11px', fontFamily: 'var(--mono)', minWidth: '62px' } }, [kind]),
+                    el('span', { style: { color: INK, fontFamily: 'var(--mono)', fontWeight: '700', minWidth: '40px' } }, [code || '?']),
+                    d
+                        ? el('span', { style: { color: emphasis ? WARN : INK, fontSize: '13px', fontWeight: emphasis ? '600' : '400' } }, [stamp(d)])
+                        : el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, ['not recorded yet']),
+                    d ? el('span', { style: { color: INK_MUTE, fontSize: '11px' } }, ['local']) : null
+                ]);
+            };
 
-            card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '5px' } }, [
-                [latest.airline,
-                 typeof latest.stops === 'number'
-                     ? (latest.stops === 0 ? 'nonstop' : `${latest.stops} stop${latest.stops === 1 ? '' : 's'}`)
-                     : null,
-                 `price seen ${fmtDate(String(latest.observed_at).slice(0, 10))}`
-                ].filter(Boolean).join(` ${MID} `)
+            const legBlock = (label, fromCode, toCode, depIso, arrIso, p) => {
+                const dep = parseLocal(depIso);
+                const arr = parseLocal(arrIso);
+                const kids = [
+                    el('div', {
+                        style: {
+                            color: INK_MUTE, fontSize: '11px', fontFamily: 'var(--mono)',
+                            textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: '700'
+                        }
+                    }, [`${label}  ${fromCode || '?'} ${ARROW} ${toCode || '?'}`])
+                ];
+
+                // Leave-home time. Only for the outbound - the return starts at
+                // a hotel, not this house, so the drive estimate would be wrong.
+                if (dep && p.fromHome) {
+                    const lead = AIRPORT_SECURITY_BUFFER_MIN + driveMinutesFor(fromCode);
+                    const leave = new Date(dep.getTime() - lead * 60000);
+                    kids.push(el('div', {
+                        style: { display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '13px', marginTop: '4px', flexWrap: 'wrap' }
+                    }, [
+                        el('span', { style: { color: INK_MUTE, fontSize: '11px', fontFamily: 'var(--mono)', minWidth: '62px' } }, ['Leave home']),
+                        el('span', { style: { color: leave.getDate() !== dep.getDate() ? WARN : INK, fontSize: '13px', fontWeight: '600' } }, [stamp(leave)]),
+                        el('span', { style: { color: INK_MUTE, fontSize: '11px' } }, [
+                            `${driveMinutesFor(fromCode)}m drive + 2h at ${fromCode}`
+                        ])
+                    ]));
+                }
+
+                kids.push(stopRow('Take off', fromCode, depIso));
+
+                // Each layover, named and timed. A 12h sit is the difference
+                // between a bargain and a lost day.
+                (p.layovers || []).forEach((lo) => {
+                    const mins = Number(lo.duration) || 0;
+                    kids.push(el('div', {
+                        style: { display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '13px', marginTop: '2px', flexWrap: 'wrap' }
+                    }, [
+                        el('span', { style: { color: INK_MUTE, fontSize: '11px', fontFamily: 'var(--mono)', minWidth: '62px' } }, ['Layover']),
+                        el('span', { style: { color: INK, fontFamily: 'var(--mono)', fontWeight: '700', minWidth: '40px' } }, [lo.id || '?']),
+                        el('span', { style: { color: mins >= 240 ? WARN : INK, fontSize: '13px', fontWeight: mins >= 240 ? '600' : '400' } }, [hm(mins)]),
+                        lo.overnight ? el('span', { style: { color: WARN, fontSize: '11px' } }, ['overnight']) : null
+                    ]));
+                });
+
+                kids.push(stopRow('Land', toCode, arrIso, arr && dep && arr.getDate() !== dep.getDate()));
+
+                const facts = [
+                    p.durationMinutes ? `${hm(p.durationMinutes)} total` : null,
+                    p.stopText, p.airline, p.flightNumbers
+                ].filter(Boolean);
+                if (facts.length) {
+                    kids.push(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '4px' } }, [facts.join(` ${MID} `)]));
+                }
+
+                const notes = [];
+                if (dep && dep.getHours() < 5) notes.push('Red-eye departure');
+                if (dep && arr && arr.getDate() !== dep.getDate()) notes.push('Lands the next day');
+                if (p.maxLayover >= 240) notes.push(`${hm(p.maxLayover)} stuck in transit`);
+                if (notes.length) {
+                    kids.push(el('div', {
+                        style: { color: WARN, fontSize: '12px', marginTop: '3px', fontWeight: '600' }
+                    }, [notes.join(` ${MID} `)]));
+                }
+                return el('div', { style: { marginTop: '12px' } }, kids);
+            };
+
+            const stopText = typeof latest.stops === 'number'
+                ? (latest.stops === 0 ? 'nonstop' : `${latest.stops} stop${latest.stops === 1 ? '' : 's'}`)
+                : null;
+            const layovers = Array.isArray(latest.layovers) ? latest.layovers : [];
+
+            card.appendChild(legBlock('Fly out', latest.origin, w.destination, latest.depart_at, latest.arrive_at, {
+                fromHome: true,
+                layovers,
+                durationMinutes: latest.duration_minutes,
+                maxLayover: Number(latest.max_layover_minutes) || 0,
+                stopText, airline: latest.airline, flightNumbers: latest.flight_numbers
+            }));
+
+            if (isRoundTrip && latest.ret_depart_at) {
+                card.appendChild(legBlock('Return', w.destination, latest.origin, latest.ret_depart_at, latest.ret_arrive_at, {
+                    fromHome: false, layovers: [], maxLayover: 0, stopText, airline: latest.airline
+                }));
+            } else if (!isRoundTrip) {
+                card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '10px' } }, [
+                    `Return not priced ${EMD} it was booked with points, so there is nothing to rebook.`
+                ]));
+            }
+
+            card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '8px' } }, [
+                `Price seen ${fmtDate(String(latest.observed_at).slice(0, 10))}`
             ]));
 
             // The judgement Kelly actually needs: cheap relative to what we've seen.
