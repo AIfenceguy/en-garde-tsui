@@ -80,7 +80,7 @@ export async function mountTravel(root) {
 
     const [{ data, error }, tripsRes] = await Promise.all([
         supa.from('flight_watches')
-            .select('*, flight_prices(price, currency, airline, booking_url, stops, origin, observed_at)')
+            .select('*, flight_prices(price, currency, airline, booking_url, stops, origin, observed_at, searched_depart_date, searched_return_date)')
             .is('deleted_at', null)
             .order('depart_date'),
         // What the trip is actually for: the competitions, and the travel
@@ -220,40 +220,68 @@ export async function mountTravel(root) {
             const perSeat = cur / (w.passengers || 1);
             const hitTarget = w.target_price && perSeat <= w.target_price;
 
-            card.appendChild(el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '8px' } }, [
+            // Always one person, never a party total. Ricky: "just show 1 person
+            // cost, explicitly showing flyout, returning. no need to show 2
+            // person as this confusing." Multiplying by headcount is easy;
+            // being unable to tell whether $298 is one seat or two is not.
+            const isRoundTrip = !!latest.searched_return_date;
+            const shape = isRoundTrip ? 'round trip' : 'one way';
+
+            card.appendChild(el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '8px', flexWrap: 'wrap' } }, [
                 el('span', {
                     style: {
                         color: hitTarget ? GOOD : INK,
                         fontSize: '30px', fontWeight: '700', fontFamily: 'var(--mono)'
                     }
-                }, [money(cur / (w.passengers || 1))]),
-                // Per seat leads. The API hands back a party total, but nobody
-                // books that way - showing $317 for a fare Kelly bought at $159
-                // made her own flight unrecognisable.
-                (w.passengers > 1)
-                    ? el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [
-                        `each · ${money(cur)} for ${w.passengers}`
-                    ])
-                    : null,
-                latest.origin
-                    ? el('span', { style: { color: INK, fontSize: '13px', fontFamily: 'var(--mono)', fontWeight: '600' } }, [`from ${latest.origin}`])
-                    : null,
-                latest.airline ? el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [latest.airline]) : null,
-                typeof latest.stops === 'number'
-                    ? el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [latest.stops === 0 ? 'nonstop' : `${latest.stops} stop${latest.stops === 1 ? '' : 's'}`])
-                    : null
+                }, [money(perSeat)]),
+                el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [`per person ${MID} ${shape}`])
+            ]));
+
+            // Spell the legs out. A bare "Oct 8 - Oct 12" heading over a one-way
+            // fare reads as a round trip, and a price with no date on it reads
+            // as live when it may be days old.
+            const legLine = (label, from, to, date) => el('div', {
+                style: { display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '13px', marginTop: '3px', flexWrap: 'wrap' }
+            }, [
+                el('span', {
+                    style: {
+                        color: INK_MUTE, fontSize: '11px', fontFamily: 'var(--mono)',
+                        textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: '58px'
+                    }
+                }, [label]),
+                el('span', { style: { color: INK, fontFamily: 'var(--mono)', fontWeight: '600' } }, [`${from} ${ARROW} ${to}`]),
+                date ? el('span', { style: { color: INK, fontSize: '13px' } }, [fmtDate(String(date).slice(0, 10))]) : null
+            ]);
+
+            card.appendChild(el('div', { style: { marginTop: '6px' } }, [
+                legLine('Fly out', latest.origin || '?', w.destination,
+                        latest.searched_depart_date || w.depart_date),
+                isRoundTrip
+                    ? legLine('Return', w.destination, latest.origin || '?', latest.searched_return_date)
+                    : el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '3px', paddingLeft: '66px' } }, [
+                        `Return not priced ${EMD} it was booked with points, so there is nothing to rebook.`
+                      ])
+            ]));
+
+            card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '5px' } }, [
+                [latest.airline,
+                 typeof latest.stops === 'number'
+                     ? (latest.stops === 0 ? 'nonstop' : `${latest.stops} stop${latest.stops === 1 ? '' : 's'}`)
+                     : null,
+                 `price seen ${fmtDate(String(latest.observed_at).slice(0, 10))}`
+                ].filter(Boolean).join(` ${MID} `)
             ]));
 
             // The judgement Kelly actually needs: cheap relative to what we've seen.
             const verdict = isBest
                 ? { text: 'Lowest price seen so far', color: GOOD }
-                : { text: `${money((cur - min) / (w.passengers || 1))}/seat above the low of ${money(min / (w.passengers || 1))} on ${fmtDate(cheapest.observed_at)}`, color: INK_MUTE };
+                : { text: `${money((cur - min) / (w.passengers || 1))} per person above the low of ${money(min / (w.passengers || 1))} seen ${fmtDate(String(cheapest.observed_at).slice(0, 10))}`, color: INK_MUTE };
             card.appendChild(el('div', { style: { color: verdict.color, fontSize: '13px', marginTop: '2px' } }, [verdict.text]));
 
             if (w.target_price) {
                 card.appendChild(el('div', {
                     style: { color: hitTarget ? GOOD : INK_MUTE, fontSize: '13px', marginTop: '2px', fontWeight: hitTarget ? '600' : '400' }
-                }, [hitTarget ? `At or below your ${money(w.target_price)}/seat target — book it.` : `Target ${money(w.target_price)}/seat`]));
+                }, [hitTarget ? `At or below your ${money(w.target_price)} per person target ${EMD} book it.` : `Target ${money(w.target_price)} per person`]));
             }
 
             // Per-airport comparison: the preferred airport is listed first and
@@ -269,6 +297,11 @@ export async function mountTravel(root) {
                 }
                 if (bestBy.size) {
                     const overall = Math.min(...Array.from(bestBy.values()).map((p) => Number(p.price)));
+                    // Which airport the others are measured against. A bare
+                    // "+$103" was read as the price of a return leg; it is the
+                    // gap to the cheapest airport, so the row has to say so.
+                    const cheapestCode = Array.from(bestBy.entries())
+                        .reduce((m, e) => (Number(e[1].price) < Number(m[1].price) ? e : m))[0];
                     const ordered = Array.from(bestBy.entries()).sort((a, b) => {
                         if (a[0] === w.preferred_origin) return -1;
                         if (b[0] === w.preferred_origin) return 1;
@@ -280,7 +313,7 @@ export async function mountTravel(root) {
                         return el('div', {
                             style: {
                                 display: 'flex', alignItems: 'baseline', gap: '8px',
-                                padding: '3px 0', fontSize: '13px'
+                                padding: '3px 0', fontSize: '13px', flexWrap: 'wrap'
                             }
                         }, [
                             el('span', {
@@ -288,13 +321,15 @@ export async function mountTravel(root) {
                             }, [code]),
                             isPref ? el('span', { style: { color: 'var(--accent)', fontSize: '11px' } }, ['★']) : null,
                             el('span', { style: { color: INK, fontFamily: 'var(--mono)' } }, [money(p.price / pax)]),
+                            el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, ['per person']),
                             diff > 0
-                                ? el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [`+${money(diff / pax)}`])
-                                : el('span', { style: { color: GOOD, fontSize: '12px' } }, ['cheapest'])
+                                ? el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [`${money(diff / pax)} more than ${cheapestCode}`])
+                                : el('span', { style: { color: GOOD, fontSize: '12px' } }, ['cheapest']),
+                            el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [`seen ${fmtDate(String(p.observed_at).slice(0, 10))}`])
                         ]);
                     });
-                    card.appendChild(el('div', { style: { marginTop: '8px' } }, [
-                        el('div', { class: 'kicker', style: { color: INK_MUTE } }, ['By airport']),
+                    card.appendChild(el('div', { style: { marginTop: '10px' } }, [
+                        el('div', { class: 'kicker', style: { color: INK_MUTE } }, ['Best price per airport']),
                         ...rows
                     ]));
                 }
