@@ -440,6 +440,156 @@ export async function mountTravel(root) {
                 }
             }
 
+            // --- When to fly out ------------------------------------------
+            // Three columns that have to be read together, never one:
+            //
+            //   "we don't want to skip school preferably. However, we need to
+            //    make sure we arrive to the convention on time ... if we can
+            //    save more on the flight than hotel cost, we consider 2 days
+            //    ahead ... so the user can choose himself."
+            //
+            // A day earlier buys a cheaper seat and a hotel night nobody wanted,
+            // and costs another day of school. The tool lays the three side by
+            // side and stops there - it does not pick.
+            const firstEvent = trips.length ? trips[0].event_date : null;
+            if (firstEvent) {
+                const hotelRate = Number(w.hotel_nightly_rate) || 0;
+                const dayMs = 86400000;
+                const asDate = (iso) => new Date(String(iso).slice(0, 10) + 'T00:00:00');
+                const eventDay = asDate(firstEvent);
+                // Baseline: on the ground the night before. Anything earlier is
+                // an extra hotel night, which the fare has to beat to be worth it.
+                const baseline = new Date(eventDay.getTime() - (w.arrive_days_before ?? 1) * dayMs);
+
+                // Weekdays burned getting there. Mon-Fri via getDay(); the days
+                // at the venue are not school days lost to travel, so the count
+                // stops at the event.
+                const schoolDaysMissed = (from) => {
+                    let n = 0;
+                    for (let d = new Date(from); d < eventDay; d = new Date(d.getTime() + dayMs)) {
+                        const wd = d.getDay();
+                        if (wd >= 1 && wd <= 5) n += 1;
+                    }
+                    return n;
+                };
+
+                // Compare like with like, or the panel repeats the bug that put a
+                // round-trip fare next to a one-way one. Use a single sweep - the
+                // most recent day that priced more than one departure date - and
+                // within it only fares of the same trip shape.
+                const dayCounts = new Map();
+                for (const pr of prices) {
+                    if (!pr.searched_depart_date) continue;
+                    const od = String(pr.observed_at).slice(0, 10);
+                    if (!dayCounts.has(od)) dayCounts.set(od, new Set());
+                    dayCounts.get(od).add(pr.searched_depart_date);
+                }
+                const sweepDay = Array.from(dayCounts.entries())
+                    .filter(([, set]) => set.size > 1)
+                    .map(([d]) => d)
+                    .sort()
+                    .pop();
+                const sweepRows = sweepDay
+                    ? prices.filter((pr) => String(pr.observed_at).slice(0, 10) === sweepDay)
+                    : [];
+                // Same shape as the headline fare, so hotel maths is not applied
+                // across a one-way and a round trip.
+                const shapeRows = sweepRows.filter((pr) => !!pr.searched_return_date === isRoundTrip);
+                const compareRows = shapeRows.length ? shapeRows : sweepRows;
+
+                // Cheapest seat on each candidate departure day.
+                const byDay = new Map();
+                for (const pr of compareRows) {
+                    const key = pr.searched_depart_date;
+                    if (!key) continue;
+                    const seat = Number(pr.price) / pax;
+                    const cur = byDay.get(key);
+                    if (!cur || seat < cur.seat) byDay.set(key, { seat, origin: pr.origin, observed: pr.observed_at });
+                }
+
+                if (byDay.size > 1) {
+                    const options = Array.from(byDay.entries()).map(([iso, v]) => {
+                        const dep = asDate(iso);
+                        const nights = Math.max(0, Math.round((baseline - dep) / dayMs));
+                        return {
+                            iso, dep, ...v,
+                            nights,
+                            hotel: nights * hotelRate,
+                            allIn: v.seat + nights * hotelRate,
+                            school: schoolDaysMissed(dep),
+                            tooLate: dep > baseline
+                        };
+                    }).sort((a, b) => a.dep - b.dep);
+
+                    const legal = options.filter((o) => !o.tooLate);
+                    const bestAllIn = legal.length ? Math.min(...legal.map((o) => o.allIn)) : null;
+                    const leastSchool = legal.length ? Math.min(...legal.map((o) => o.school)) : null;
+
+                    const box = el('div', { style: { marginTop: '14px' } }, [
+                        el('div', { class: 'kicker', style: { color: INK_MUTE } }, ['When to fly out']),
+                        el('div', { style: { color: INK_MUTE, fontSize: '12px', margin: '2px 0 6px' } }, [
+                            hotelRate
+                                ? `Fare plus the hotel nights that day buys, per person, at $${hotelRate}/night.`
+                                : 'Fare per person. Set a nightly hotel rate on the watch to see the all-in cost.'
+                        ])
+                    ]);
+
+                    for (const o of options) {
+                        const isBest = bestAllIn !== null && o.allIn === bestAllIn && !o.tooLate;
+                        const dayName = o.dep.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                        box.appendChild(el('div', {
+                            style: {
+                                display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap',
+                                padding: '5px 0', fontSize: '13px',
+                                borderTop: '1px solid rgba(0,0,0,0.06)'
+                            }
+                        }, [
+                            el('span', {
+                                style: { fontFamily: 'var(--mono)', fontWeight: '700', color: isBest ? GOOD : INK, minWidth: '104px' }
+                            }, [dayName]),
+                            el('span', { style: { color: INK, fontFamily: 'var(--mono)' } }, [money(o.seat)]),
+                            el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [`fare from ${o.origin}`]),
+                            o.nights > 0
+                                ? el('span', { style: { color: WARN, fontSize: '12px' } }, [
+                                    `+ ${money(o.hotel)} hotel (${o.nights} night${o.nights === 1 ? '' : 's'})`
+                                  ])
+                                : el('span', { style: { color: GOOD, fontSize: '12px' } }, ['no extra hotel']),
+                            el('span', {
+                                style: { color: isBest ? GOOD : INK, fontFamily: 'var(--mono)', fontWeight: '700' }
+                            }, [`= ${money(o.allIn)}`]),
+                            el('span', {
+                                style: { color: o.school === leastSchool ? INK_MUTE : WARN, fontSize: '12px' }
+                            }, [`${o.school} school day${o.school === 1 ? '' : 's'}`]),
+                            o.tooLate
+                                ? el('span', { style: { color: BAD, fontSize: '12px', fontWeight: '600' } }, ['arrives too late'])
+                                : isBest
+                                    ? el('span', { style: { color: GOOD, fontSize: '12px', fontWeight: '600' } }, ['cheapest all-in'])
+                                    : null
+                        ]));
+                    }
+
+                    // Say what the columns add up to, since the cheapest fare and
+                    // the cheapest trip are routinely different days.
+                    const cheapestFare = legal.length
+                        ? legal.reduce((m, o) => (o.seat < m.seat ? o : m))
+                        : null;
+                    const cheapestTrip = legal.length
+                        ? legal.reduce((m, o) => (o.allIn < m.allIn ? o : m))
+                        : null;
+                    if (cheapestFare && cheapestTrip) {
+                        const fmtDay = (o) => o.dep.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+                        const sameDay = cheapestFare.iso === cheapestTrip.iso;
+                        const note = sameDay
+                            ? `${fmtDay(cheapestTrip)} is both the cheapest seat and the cheapest trip, and costs ${cheapestTrip.school} school day${cheapestTrip.school === 1 ? '' : 's'}.`
+                            : `${fmtDay(cheapestFare)} has the cheapest seat at ${money(cheapestFare.seat)}, but ${cheapestFare.nights} extra hotel night${cheapestFare.nights === 1 ? '' : 's'} makes it ${money(cheapestFare.allIn - cheapestTrip.allIn)} more than flying ${fmtDay(cheapestTrip)} \u2014 which also costs ${cheapestFare.school - cheapestTrip.school} fewer school day${(cheapestFare.school - cheapestTrip.school) === 1 ? '' : 's'}.`;
+                        box.appendChild(el('div', {
+                            style: { color: INK, fontSize: '13px', marginTop: '8px', lineHeight: '1.55', fontWeight: '600' }
+                        }, [note]));
+                    }
+                    card.appendChild(box);
+                }
+            }
+
             if (dailyBest.length > 1) card.appendChild(sparkline(dailyBest));
 
             card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '11px', marginTop: '4px', fontFamily: 'var(--mono)' } }, [
