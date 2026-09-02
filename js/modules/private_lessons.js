@@ -51,7 +51,11 @@ export async function renderPrivateLessonsTab(container) {
     for (const l of lessons) {
         const card = el('div', { class: 'card bordered-accent' });
         card.appendChild(el('div', { class: 'card-head' }, [
-            el('h3', {}, [l.coach || 'Coach', ' · ', el('span', { class: 'mono dim' }, [`${l.duration_min || '?'}m`])]),
+            // Drop the slot entirely when there is no duration. "Kevin - ?m"
+            // reads as a broken field; "Kevin" reads as a lesson with a coach.
+            el('h3', {}, l.duration_min
+                ? [l.coach || 'Coach', ' · ', el('span', { class: 'mono dim' }, [`${l.duration_min}m`])]
+                : [l.coach || 'Coach']),
             el('span', { class: 'card-meta' }, [fmtDate(l.date)])
         ]));
         if (l.new_skill_introduced) card.appendChild(el('span', { class: 'chip on', style: { marginBottom: '8px' } }, ['new skill']));
@@ -156,6 +160,27 @@ export async function renderPrivateLessonsTab(container) {
         formMount.innerHTML = '';
         const form = el('form', { class: 'card', onsubmit: async (e) => { e.preventDefault(); await save(); } });
         formMount.appendChild(form);
+
+        // The form mounts above the list. Editing an entry further down the page
+        // therefore rendered it off-screen, which is why the edit button looked
+        // dead - it had worked every time, just somewhere nobody was looking.
+        if (editing) {
+            form.insertBefore(
+                el('div', {
+                    style: {
+                        fontFamily: 'var(--eg-mono, monospace)', fontSize: '11px',
+                        fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase',
+                        color: 'var(--accent)', marginBottom: '10px'
+                    }
+                }, ['Editing this entry']),
+                form.firstChild
+            );
+        }
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Focus after the scroll so assistive tech and keyboard users land in
+        // the form too, not only sighted ones.
+        const firstField = form.querySelector('input, select, textarea');
+        if (firstField) setTimeout(() => firstField.focus({ preventScroll: true }), 250);
 
         const coach = coachPicker({ value: editing?.coach || '' });
         form.appendChild(el('div', { class: 'row' }, [

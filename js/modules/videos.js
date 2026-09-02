@@ -311,6 +311,27 @@ export async function mountVideos(root, params = {}) {
         const form = el('form', { class: 'card', onsubmit: async (e) => { e.preventDefault(); await save(); } });
         formMount.appendChild(form);
 
+        // The form mounts above the list. Editing an entry further down the page
+        // therefore rendered it off-screen, which is why the edit button looked
+        // dead - it had worked every time, just somewhere nobody was looking.
+        if (editing) {
+            form.insertBefore(
+                el('div', {
+                    style: {
+                        fontFamily: 'var(--eg-mono, monospace)', fontSize: '11px',
+                        fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase',
+                        color: 'var(--accent)', marginBottom: '10px'
+                    }
+                }, ['Editing this entry']),
+                form.firstChild
+            );
+        }
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Focus after the scroll so assistive tech and keyboard users land in
+        // the form too, not only sighted ones.
+        const firstField = form.querySelector('input, select, textarea');
+        if (firstField) setTimeout(() => firstField.focus({ preventScroll: true }), 250);
+
         let videoId = editing?.video_id || null;
         let thumb = editing?.video_thumbnail_url || null;
         let title = editing?.video_title || '';

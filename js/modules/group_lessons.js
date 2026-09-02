@@ -85,6 +85,27 @@ export async function renderGroupLessonsTab(container) {
         const form = el('form', { class: 'card', onsubmit: async (e) => { e.preventDefault(); await save(); } });
         formMount.appendChild(form);
 
+        // The form mounts above the list. Editing an entry further down the page
+        // therefore rendered it off-screen, which is why the edit button looked
+        // dead - it had worked every time, just somewhere nobody was looking.
+        if (editing) {
+            form.insertBefore(
+                el('div', {
+                    style: {
+                        fontFamily: 'var(--eg-mono, monospace)', fontSize: '11px',
+                        fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase',
+                        color: 'var(--accent)', marginBottom: '10px'
+                    }
+                }, ['Editing this entry']),
+                form.firstChild
+            );
+        }
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Focus after the scroll so assistive tech and keyboard users land in
+        // the form too, not only sighted ones.
+        const firstField = form.querySelector('input, select, textarea');
+        if (firstField) setTimeout(() => firstField.focus({ preventScroll: true }), 250);
+
         const instructor = coachPicker({ name: 'instructor', value: editing?.instructor || '' });
         form.appendChild(el('div', { class: 'row' }, [
             el('div', { class: 'field' }, [el('label', {}, ['Date']), el('input', { type: 'date', name: 'date', value: editing?.date || todayISO(), required: true })]),
