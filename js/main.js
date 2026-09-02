@@ -14,6 +14,7 @@ import { mountOpponentsList, mountOpponentDetail, mountScoutForm } from './modul
 import { mountPhysical } from './modules/physical.js';
 import { mountMental } from './modules/mental.js';
 import { mountLessons } from './modules/lessons.js';
+import { mountTrain } from './modules/train.js';
 import { mountTournaments } from './modules/tournaments.js';
 import { mountTournamentDay } from './modules/tournament-day.js';
 import { mountImportV1 } from './modules/import_v1.js';
@@ -36,6 +37,7 @@ defineRoute('opponents/scout', mountScoutForm);
 defineRoute('physical', mountPhysical);
 defineRoute('mental', mountMental);
 defineRoute('lessons', mountLessons);
+defineRoute('train', mountTrain);
 defineRoute('videos', mountVideos);
 defineRoute('style', mountStyle);
 defineRoute('travel', mountTravel);
