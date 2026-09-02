@@ -9,13 +9,19 @@
 // from skill_drills, keyed to the same slugs — a solo version for a fencer
 // alone at home and a partner version for club night, because those are the
 // two situations people actually train in.
+//
+// Styling follows the house language rather than inventing a new one: serif
+// italic for the page title, mono at wide tracking for every label, .card for
+// surfaces, .num for figures. The first cut of this screen used plain inline
+// styles and stood out badly against the rest of the site.
 
 import { el, toast } from '../lib/util.js';
 import { supa } from '../lib/supa.js';
 import { activeProfile } from '../lib/state.js';
 
-const INK = 'var(--ink, #1A1D24)';
-// Literal, not var(--ink-mute): that token composites to ~3.1:1 on white.
+const INK = 'var(--ink)';
+// Literal, not var(--ink-mute): that token is rgba(29,29,31,0.52), which
+// composites to about 3.5:1 on the cream surface and fails AA.
 const INK_MUTE = '#6B7280';
 const GOOD = '#1f7a1f';
 const WARN = '#B45309';
@@ -37,26 +43,33 @@ const STATUS = {
     strong:    { rank: 7, label: 'Strong',          color: GOOD, blurb: '' }
 };
 
-const pretty = (slug) => String(slug || '')
-    .split('-')
-    .map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-    .join(' ');
+const pretty = (slug) => {
+    const s = String(slug || '').replace(/-/g, ' ');
+    return s.charAt(0).toUpperCase() + s.slice(1);
+};
 
 export async function mountTrain(root) {
     const profile = activeProfile();
     if (!profile) {
-        root.appendChild(el('div', { class: 'empty' }, ['Pick a profile.']));
+        root.appendChild(el('div', { class: 'empty' }, [
+            el('p', { class: 'empty-line' }, ['Pick a profile to see what to work on.'])
+        ]));
         return;
     }
 
-    root.appendChild(el('div', { class: 'section-head' }, [
-        el('h2', {}, ['Train']),
-        el('span', { class: 'meta' }, [profile.name])
+    // House header: serif italic title, mono sub-line. Same shape as Free Fence.
+    root.appendChild(el('div', { style: { padding: '40px var(--gut) 8px' } }, [
+        el('h1', { class: 'page-eyebrow' }, ['Train']),
+        el('div', { class: 'today-sub' }, [
+            el('span', {}, [profile.name.toUpperCase()])
+        ])
     ]));
 
     const body = el('div', {});
     root.appendChild(body);
-    body.appendChild(el('div', { class: 'empty' }, ['Reading your lessons…']));
+    body.appendChild(el('div', { class: 'empty' }, [
+        el('p', { class: 'empty-line' }, ['Reading your lessons…'])
+    ]));
 
     const [progRes, drillRes, doneRes] = await Promise.all([
         supa.from('skill_progress').select('*').eq('profile_id', profile.id),
@@ -69,7 +82,10 @@ export async function mountTrain(root) {
 
     if (!progress.length) {
         body.appendChild(el('div', { class: 'empty' }, [
-            'Nothing to work from yet. Log a private lesson with topic ratings and this fills in.'
+            el('p', { class: 'empty-line' }, [
+                'Nothing to work from yet. Log a private lesson with topic ratings and this fills in.'
+            ]),
+            el('a', { href: '#lessons', class: 'btn btn-primary btn-mono-label empty-cta' }, ['Log a lesson'])
         ]));
         return;
     }
@@ -97,106 +113,112 @@ export async function mountTrain(root) {
     // A list of eleven skills is a list nobody acts on. Name the single
     // priority first, in a sentence, with the evidence behind it.
     const top = ranked[0];
-    if (top && STATUS[top.status]?.rank <= 3) {
+    if (top && (STATUS[top.status]?.rank ?? 9) <= 3) {
         const meta = STATUS[top.status];
         const why = top.status === 'declining'
-            ? `It was ${top.first_rated}/10 when you first logged it and it is ${top.latest}/10 now.`
+            ? `It was ${top.first_rated} out of 10 when you first logged it, and it is ${top.latest} now.`
             : top.status === 'stuck'
-                ? `Rated ${top.latest}/10 across ${top.times_rated} separate lessons — the number has not moved.`
-                : `Your lowest rating at ${top.latest}/10.`;
+                ? `Rated ${top.latest} out of 10 across ${top.times_rated} separate lessons. The number has not moved.`
+                : `Your lowest rating, at ${top.latest} out of 10.`;
         const stale = Number(top.days_since) > 7
             ? ` No lesson has covered it in ${top.days_since} days.`
             : '';
-        body.appendChild(el('div', {
-            style: {
-                border: `2px solid ${meta.color}`, borderRadius: '10px',
-                padding: '14px 16px', marginBottom: '18px'
-            }
-        }, [
-            el('div', { class: 'kicker', style: { color: meta.color } }, ['Work on this first']),
-            el('div', { style: { color: INK, fontSize: '22px', fontWeight: '700', margin: '4px 0 6px' } }, [
-                pretty(top.skill_slug)
-            ]),
-            el('div', { style: { color: INK, fontSize: '14px', lineHeight: '1.6' } }, [why + stale]),
-            el('div', { style: { color: INK_MUTE, fontSize: '13px', marginTop: '8px' } }, [
-                `Last covered by ${top.last_coach || 'a coach'} on ${String(top.last_seen).slice(0, 10)}.`
+
+        body.appendChild(el('div', { class: 'card', style: { margin: '10px var(--gut) 22px' } }, [
+            el('div', { class: 'label', style: { color: meta.color } }, ['Work on this first']),
+            el('div', {
+                style: {
+                    fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: '30px',
+                    lineHeight: '1.1', color: INK, margin: '8px 0 10px'
+                }
+            }, [pretty(top.skill_slug)]),
+            el('p', { style: { color: INK, fontSize: '15px', lineHeight: '1.6', margin: '0' } }, [why + stale]),
+            el('div', { class: 'label', style: { color: INK_MUTE, marginTop: '12px' } }, [
+                `Last with ${top.last_coach || 'a coach'} · ${String(top.last_seen).slice(0, 10)}`
             ])
         ]));
     }
+
+    body.appendChild(el('div', { class: 'label', style: { color: INK_MUTE, margin: '0 var(--gut) 6px' } }, [
+        'Every skill, worst first'
+    ]));
 
     // --- Every skill, worst first ---------------------------------------
     for (const s of ranked) {
         const meta = STATUS[s.status] || STATUS.steady;
         const drills = drillsBySkill.get(s.skill_slug) || [];
-        const open = STATUS[s.status]?.rank <= 3;
+        const open = (STATUS[s.status]?.rank ?? 9) <= 3;
 
-        const detail = el('div', { style: { display: open ? 'block' : 'none', paddingBottom: '6px' } });
+        const detail = el('div', {
+            style: { display: open ? 'block' : 'none', padding: '0 var(--gut) 10px' }
+        });
 
-        const arrow = Number(s.change) > 0 ? `+${s.change}` : String(s.change ?? 0);
+        const change = Number(s.change) || 0;
         const head = el('button', {
             type: 'button',
             style: {
                 display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap',
                 width: '100%', textAlign: 'left', background: 'transparent',
-                border: 'none', borderTop: '1px solid rgba(0,0,0,0.08)',
-                padding: '10px 0', cursor: 'pointer'
+                border: 'none', borderTop: '1px solid var(--rule)',
+                padding: '13px var(--gut)', cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent'
             },
             onclick: () => { detail.style.display = detail.style.display === 'none' ? 'block' : 'none'; }
         }, [
-            el('span', { style: { color: INK, fontSize: '15px', fontWeight: '600', minWidth: '150px' } }, [pretty(s.skill_slug)]),
-            el('span', { style: { color: INK, fontFamily: 'var(--mono)', fontWeight: '700' } }, [`${s.latest}/10`]),
-            Number(s.change) !== 0
+            el('span', { style: { color: INK, fontSize: '16px', flex: '1 1 auto', minWidth: '140px' } }, [pretty(s.skill_slug)]),
+            el('span', { class: 'num', style: { color: INK, fontSize: '15px' } }, [`${s.latest}/10`]),
+            change !== 0
                 ? el('span', {
-                    style: { color: Number(s.change) > 0 ? GOOD : BAD, fontSize: '12px', fontFamily: 'var(--mono)' }
-                  }, [arrow])
+                    class: 'num',
+                    style: { color: change > 0 ? GOOD : BAD, fontSize: '12px' }
+                  }, [change > 0 ? `+${change}` : String(change)])
                 : null,
-            el('span', { style: { color: meta.color, fontSize: '12px', fontWeight: '600' } }, [meta.label]),
-            el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [
-                `${s.times_rated}× · ${s.days_since}d ago`
-            ])
+            el('span', { class: 'label', style: { color: meta.color } }, [meta.label])
         ]);
 
+        detail.appendChild(el('div', { class: 'label', style: { color: INK_MUTE, marginBottom: '10px' } }, [
+            `${s.times_rated} lesson${s.times_rated === 1 ? '' : 's'} · last ${s.days_since} day${s.days_since === 1 ? '' : 's'} ago`
+        ]));
+
         if (meta.blurb) {
-            detail.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '13px', margin: '0 0 8px' } }, [meta.blurb]));
+            detail.appendChild(el('p', {
+                style: { color: INK_MUTE, fontSize: '14px', margin: '0 0 12px', lineHeight: '1.5' }
+            }, [meta.blurb]));
         }
 
         if (!drills.length) {
-            detail.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '13px' } }, [
+            detail.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '14px' } }, [
                 'No drill written for this one yet.'
             ]));
         }
 
         for (const d of drills) {
             const times = doneCount.get(String(d.title).toLowerCase()) || 0;
-            detail.appendChild(el('div', {
-                style: {
-                    background: 'rgba(0,0,0,0.03)', borderRadius: '8px',
-                    padding: '12px 14px', marginBottom: '8px'
-                }
-            }, [
-                el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' } }, [
-                    el('span', {
-                        style: {
-                            fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: '700',
-                            textTransform: 'uppercase', letterSpacing: '0.06em',
-                            color: d.mode === 'solo' ? GOOD : 'var(--accent)'
-                        }
-                    }, [d.mode === 'solo' ? 'On your own' : 'With a partner']),
-                    el('span', { style: { color: INK_MUTE, fontSize: '11px' } }, [d.level]),
-                    times ? el('span', { style: { color: GOOD, fontSize: '11px' } }, [`done ${times}×`]) : null
+            detail.appendChild(el('div', { class: 'card', style: { marginBottom: '10px' } }, [
+                el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' } }, [
+                    el('span', { class: 'label', style: { color: d.mode === 'solo' ? GOOD : 'var(--gold, #c9a86a)' } }, [
+                        d.mode === 'solo' ? 'On your own' : 'With a partner'
+                    ]),
+                    el('span', { class: 'label', style: { color: INK_MUTE } }, [d.level]),
+                    times ? el('span', { class: 'label', style: { color: GOOD } }, [`done ${times}×`]) : null
                 ]),
-                el('div', { style: { color: INK, fontSize: '15px', fontWeight: '600', margin: '4px 0 6px' } }, [d.title]),
+                el('div', {
+                    style: {
+                        fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: '21px',
+                        lineHeight: '1.2', color: INK, margin: '8px 0 12px'
+                    }
+                }, [d.title]),
                 row('Set up', d.setup),
                 row('Do', d.execution),
                 row('Cue', d.cue, GOOD),
                 row('Avoid', d.common_fault, BAD),
                 row('Passed when', d.success_test),
                 d.suggested_reps
-                    ? el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '6px', fontFamily: 'var(--mono)' } }, [d.suggested_reps])
+                    ? el('div', { class: 'label', style: { color: INK_MUTE, marginTop: '10px' } }, [d.suggested_reps])
                     : null,
                 el('button', {
-                    class: 'btn',
-                    style: { marginTop: '10px', fontSize: '13px' },
+                    class: 'btn btn-mono-label',
+                    style: { marginTop: '14px', width: '100%' },
                     onclick: async (e) => {
                         const btn = e.currentTarget;
                         btn.disabled = true;
@@ -210,7 +232,7 @@ export async function mountTrain(root) {
                         });
                         if (error) { toast('Could not log: ' + error.message, 'error'); btn.disabled = false; return; }
                         toast('Logged');
-                        btn.textContent = 'Logged today';
+                        btn.textContent = 'Logged';
                     }
                 }, ['I did this'])
             ]));
@@ -221,23 +243,25 @@ export async function mountTrain(root) {
     }
 
     // Honest about the limit of what it knows.
-    body.appendChild(el('div', {
-        style: { color: INK_MUTE, fontSize: '12px', marginTop: '18px', lineHeight: '1.6' }
+    body.appendChild(el('p', {
+        style: {
+            color: INK_MUTE, fontSize: '13px', lineHeight: '1.6',
+            padding: '22px var(--gut) 40px', margin: '0',
+            borderTop: '1px solid var(--rule)'
+        }
     }, [
-        'These ratings come from private lessons — how a skill felt with a coach, not how it held up in a bout. ',
-        'Log bouts and this can start telling you which skills survive real pressure.'
+        'These ratings come from private lessons — how a skill felt with a coach, not how it held ',
+        'up in a bout. Log bouts and this can start telling you which skills survive real pressure.'
     ]));
 }
 
 function row(label, text, color) {
     if (!text) return null;
-    return el('div', { style: { display: 'flex', gap: '8px', marginTop: '3px' } }, [
+    return el('div', { style: { display: 'flex', gap: '10px', marginTop: '7px' } }, [
         el('span', {
-            style: {
-                color: INK_MUTE, fontSize: '11px', fontFamily: 'var(--mono)',
-                textTransform: 'uppercase', minWidth: '86px', flexShrink: '0', paddingTop: '2px'
-            }
+            class: 'label',
+            style: { color: INK_MUTE, minWidth: '84px', flexShrink: '0', paddingTop: '3px' }
         }, [label]),
-        el('span', { style: { color: color || INK, fontSize: '13px', lineHeight: '1.55' } }, [text])
+        el('span', { style: { color: color || INK, fontSize: '14px', lineHeight: '1.55' } }, [text])
     ]);
 }
