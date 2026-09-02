@@ -3,6 +3,7 @@
 // stripped form with field-row labels and chip-row tactics.
 
 import { el, todayISO, fmtDate, fmtDateLong, toast } from '../lib/util.js';
+import { quickBout } from '../lib/quick-bout.js';
 import { go } from '../lib/router.js';
 import { supa } from '../lib/supa.js';
 import { activeProfile } from '../lib/state.js';
@@ -40,9 +41,12 @@ export async function mountBoutsList(root) {
         ])
     ]));
 
-    root.appendChild(el('div', { style: { padding: '0 var(--gut) 18px' } }, [
-        el('a', { href: '#bouts/new', class: 'btn btn-primary btn-mono-label' }, ['+ Log a bout'])
-    ]));
+    // Above the list and above the empty state: the empty state is precisely
+    // when a two-tap log matters most.
+    root.appendChild(quickBout({
+        profile,
+        onSaved: () => { root.innerHTML = ''; mountBoutsList(root); }
+    }));
 
     let bouts = [];
     try {
@@ -54,8 +58,7 @@ export async function mountBoutsList(root) {
 
     if (!bouts.length) {
         root.appendChild(el('div', { class: 'empty' }, [
-            el('p', { class: 'empty-line' }, ['No bouts logged yet. The journal opens with the first one.']),
-            el('a', { href: '#bouts/new', class: 'btn btn-primary btn-mono-label empty-cta' }, ['Log a bout'])
+            el('p', { class: 'empty-line' }, ['No bouts logged yet. Score one above and it opens the journal.'])
         ]));
         return;
     }
@@ -93,6 +96,11 @@ function boutCard(b) {
     const ctxLabel = CONTEXT_OPTIONS.find((c) => c.value === b.context)?.label;
     if (ctxLabel) meta.push(el('span', {}, [ctxLabel.toUpperCase()]));
     if (b.location) meta.push(el('span', {}, [b.location.toUpperCase()]));
+    // A quick-logged bout has a score and nothing else. Mark it so the promise
+    // the quick form makes - score now, detail later - has somewhere to land.
+    if (!acts.length && !b.reflection && !b.opponent_name) {
+        meta.push(el('span', { style: { color: '#B45309' } }, ['NEEDS DETAIL']));
+    }
 
     return el('a', {
         href: `#bouts/show?id=${b.id}`,
