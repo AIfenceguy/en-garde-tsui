@@ -8,7 +8,7 @@ import { go } from '../lib/router.js';
 import { supa } from '../lib/supa.js';
 import { activeProfile } from '../lib/state.js';
 import { listBouts, getBout, listOpponents, findOrCreateOpponent, loadTaxonomies } from '../lib/db.js';
-import { chipGroup, tacticTally } from '../lib/chips.js';
+import { chipGroup, tacticTally, concededTally } from '../lib/chips.js';
 import { safeWrite } from '../lib/offline.js';
 import { boutDebrief, listCoachNotes } from '../lib/coach.js';
 import { getWeaknessDrills } from '../lib/weakness-drills.js';
@@ -219,6 +219,7 @@ export async function mountBoutEntry(root, params) {
     // handler never touches scoringWidget before its initialiser has run -
     // even typeof throws on a const in the temporal dead zone.
     let refreshTally = null;
+    let refreshConceded = null;
 
     // SECTION: Score — Roblox-style tap counter
     form.appendChild(sectionLabel('Score'));
@@ -238,6 +239,7 @@ export async function mountBoutEntry(root, params) {
             if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(10);
             // The tally counts against this score, so it has to hear about it.
             if (refreshTally) refreshTally();
+            if (refreshConceded) refreshConceded();
         };
         const buildCounter = (label, kind, hidden, display) => el('div', { class: 'tap-counter ' + kind }, [
             el('div', { class: 'tap-counter-label' }, [label]),
@@ -256,7 +258,9 @@ export async function mountBoutEntry(root, params) {
     }
 
     // SECTION: How I scored — tally per tactic
-    form.appendChild(sectionLabel('How I scored'));
+    const whoName = (activeProfile()?.name) || 'You';
+    const headA = sectionLabel(`How ${whoName} scored`);
+    form.appendChild(headA);
     form.appendChild(el('p', {
         class: 'auth-tagline',
         style: { fontSize: '13px', margin: '0 0 12px', maxWidth: 'none' }
@@ -276,18 +280,29 @@ export async function mountBoutEntry(root, params) {
     refreshTally();
 
     // SECTION: How they scored on me
-    form.appendChild(sectionLabel('How they scored'));
-    const failureWidget = chipGroup({
-        options: failureOpts.map((t) => ({ slug: t.slug, label: t.label, kind: 'failure' })),
-        selected: new Set(editing?.failure_patterns || []),
-        allowAdd: true,
-        onAdd: async ({ slug, label }) => {
-            const { data, error } = await supa.from('tactic_taxonomy').insert({ slug, label, kind: 'failure' }).select().single();
-            if (error) { toast('Could not add: ' + error.message, 'error'); return null; }
-            return { slug: data.slug, label: data.label, kind: 'failure' };
+    const headB = sectionLabel('How the opponent scored');
+    form.appendChild(headB);
+    form.appendChild(el('p', {
+        class: 'auth-tagline',
+        style: { fontSize: '13px', margin: '0 0 12px', maxWidth: 'none' }
+    }, [`The touches ${whoName} gave away. These should add up to their score above.`]));
+    // Seeded from conceded_actions; falls back to the old flat failure_patterns
+    // list so bouts logged before counts existed still open with their actions
+    // selected (at zero, which is honest - the count was never recorded).
+    const concededSeed = (editing?.conceded_actions?.length)
+        ? editing.conceded_actions
+        : (editing?.failure_patterns || []).map((slug) => ({ tactic_slug: slug, touches: 0 }));
+    const failureWidget = concededTally({
+        options: failureOpts.map((t) => ({ slug: t.slug, label: t.label })),
+        values: concededSeed,
+        getScore: () => {
+            const f = form.querySelector('input[name="their_score"]');
+            return f ? parseInt(f.value, 10) || 0 : 0;
         }
     });
     form.appendChild(failureWidget);
+    refreshConceded = () => failureWidget.refreshSummary?.();
+    refreshConceded();
 
     // SECTION: Reflection
     form.appendChild(sectionLabel('Reflection'));
@@ -386,7 +401,8 @@ export async function mountBoutEntry(root, params) {
             their_score: isNaN(their) ? null : their,
             outcome,
             scoring_actions: scoringWidget.getValues(),
-            failure_patterns: failureWidget.getValues(),
+            conceded_actions: failureWidget.getValues(),
+            failure_patterns: failureWidget.getSlugs(),
             reflection: (fd.get('reflection') || '').toString().trim() || null,
             coach_feedback: (fd.get('coach_feedback') || '').toString().trim() || null,
             tactics_used: (fd.get('tactics_used') || '').toString().split(',').filter(Boolean)

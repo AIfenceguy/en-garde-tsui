@@ -1093,15 +1093,20 @@ async function saveBout({ tournament, profile, oppF, myScore, oppScore, won, poo
         ...(poolNum ? { pool_num: poolNum, pool_pos: poolPos } : {}),
         ...(deRound ? { de_round: deRound } : {})
     });
+    // Column names must match the bouts table. score_for/score_against/round/
+    // notes were invented here and do not exist, so every bout logged from
+    // tournament day was rejected outright - the same class of failure as
+    // tactics_used on the main form.
     const payload = {
         profile_id: profile.id,
         opponent_id: opp.id,
         date: todayISO(),
         outcome: won ? 'win' : 'loss',
-        score_for: myScore,
-        score_against: oppScore,
-        round: poolNum ? 'pool' : 'de',
-        notes: '__TD__' + notesMeta
+        my_score: myScore,
+        their_score: oppScore,
+        // 'round' has no column; context already carries where a bout happened.
+        context: poolNum ? 'pool' : 'de',
+        reflection: '__TD__' + notesMeta
     };
     await safeWrite({ table: 'bouts', op: 'insert', payload });
 }

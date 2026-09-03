@@ -225,3 +225,82 @@ export function chipArrayEditor({ values = [], onChange = null, placeholder = 'a
     container.setValues = (v) => { arr = [...(v || [])]; rerender(); };
     return container;
 }
+
+// How the OPPONENT scored. Deliberately a single counter per action, not the
+// scored/missed pair used for the fencer's own touches: you know what beat you,
+// but you cannot reliably count the attacks your opponent tried and missed.
+// Same shape and same running total as the other tally, so the two halves of a
+// bout read as two halves of one thing.
+export function concededTally({ options, values = [], onChange = null, getScore = null }) {
+    const map = new Map();
+    for (const v of values) map.set(v.tactic_slug, Number(v.touches) || 0);
+
+    const container = el('div', { class: 'tactic-tally-list' });
+    const summary = el('div', {
+        style: {
+            fontFamily: 'var(--mono)', fontSize: '12px', letterSpacing: '0.06em',
+            padding: '8px 0 10px', color: '#6B7280'
+        }
+    });
+
+    function total() {
+        let n = 0;
+        for (const v of map.values()) n += v;
+        return n;
+    }
+
+    function paintSummary() {
+        const done = total();
+        const score = getScore ? Number(getScore()) : null;
+        if (!score) {
+            summary.textContent = done ? `${done} touch${done === 1 ? '' : 'es'} logged` : '';
+            summary.style.color = '#6B7280';
+            return;
+        }
+        if (done === score) {
+            summary.textContent = `All ${score} of their touches accounted for`;
+            summary.style.color = '#1f7a1f';
+        } else if (done > score) {
+            summary.textContent = `${done} logged but they scored ${score} - one of these is wrong`;
+            summary.style.color = '#9b2230';
+        } else {
+            summary.textContent = `${done} of their ${score} touches logged - ${score - done} to go`;
+            summary.style.color = '#B45309';
+        }
+    }
+
+    function bump(slug, delta) {
+        const cur = map.get(slug) || 0;
+        const next = Math.max(0, cur + delta);
+        if (next === 0) map.delete(slug); else map.set(slug, next);
+        rerender();
+        onChange?.(container.getValues());
+    }
+
+    function rerender() {
+        container.innerHTML = '';
+        container.appendChild(summary);
+        for (const o of options) {
+            const n = map.get(o.slug) || 0;
+            container.appendChild(el('div', { class: 'tactic-tally' }, [
+                el('div', { class: 'name' }, [o.label]),
+                el('div', {
+                    class: 'pill ' + (n > 0 ? 'fail' : ''),
+                    style: { color: n > 0 ? '' : '#1A1D24' }
+                }, [
+                    el('button', { type: 'button', class: 'delta', 'aria-label': `${o.label}, one fewer`, onclick: () => bump(o.slug, -1) }, ['\u2212']),
+                    el('span', {}, [`${n} touch${n === 1 ? '' : 'es'}`]),
+                    el('button', { type: 'button', class: 'delta', 'aria-label': `${o.label}, one more`, onclick: () => bump(o.slug, +1) }, ['+'])
+                ])
+            ]));
+        }
+        paintSummary();
+    }
+
+    container.refreshSummary = paintSummary;
+    container.getValues = () => Array.from(map.entries()).map(([slug, touches]) => ({ tactic_slug: slug, touches }));
+    // Flat slug list, so failure_patterns keeps working for anything reading it.
+    container.getSlugs = () => Array.from(map.keys());
+    rerender();
+    return container;
+}
