@@ -215,6 +215,11 @@ export async function mountBoutEntry(root, params) {
         el('input', { type: 'text', name: 'opponent_club', class: 'field-input', value: editing?.opponent_club || '', placeholder: 'home club' })
     ]));
 
+    // Assigned once the tally exists further down. Declared here so the tap
+    // handler never touches scoringWidget before its initialiser has run -
+    // even typeof throws on a const in the temporal dead zone.
+    let refreshTally = null;
+
     // SECTION: Score — Roblox-style tap counter
     form.appendChild(sectionLabel('Score'));
     {
@@ -231,6 +236,8 @@ export async function mountBoutEntry(root, params) {
             display.textContent = String(clamped);
             display.classList.remove('tap-counter-pop'); void display.offsetWidth; display.classList.add('tap-counter-pop');
             if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(10);
+            // The tally counts against this score, so it has to hear about it.
+            if (refreshTally) refreshTally();
         };
         const buildCounter = (label, kind, hidden, display) => el('div', { class: 'tap-counter ' + kind }, [
             el('div', { class: 'tap-counter-label' }, [label]),
@@ -253,9 +260,20 @@ export async function mountBoutEntry(root, params) {
     form.appendChild(el('p', {
         class: 'auth-tagline',
         style: { fontSize: '13px', margin: '0 0 12px', maxWidth: 'none' }
-    }, ['+ marks each touch attempted; ✓ marks the ones that landed.']));
-    const scoringWidget = tacticTally({ options: scoringOpts.map((t) => ({ slug: t.slug, label: t.label })), values: editing?.scoring_actions || [] });
+    }, ['For each action: how many touches it WON you, and how many times you tried it and MISSED. The scored numbers should add up to your score above.']));
+    const scoringWidget = tacticTally({
+        options: scoringOpts.map((t) => ({ slug: t.slug, label: t.label })),
+        values: editing?.scoring_actions || [],
+        // Read the live score off the hidden input the tap counters write to,
+        // so the tally can say how many touches are still unaccounted for.
+        getScore: () => {
+            const f = form.querySelector('input[name="my_score"]');
+            return f ? parseInt(f.value, 10) || 0 : 0;
+        }
+    });
     form.appendChild(scoringWidget);
+    refreshTally = () => scoringWidget.refreshSummary?.();
+    refreshTally();
 
     // SECTION: How they scored on me
     form.appendChild(sectionLabel('How they scored'));

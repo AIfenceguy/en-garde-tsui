@@ -74,32 +74,76 @@ export function chipGroup({ options, selected, allowAdd = false, onChange = null
  * options: [{ slug, label }]
  * Returns container. Use `.getValues()` to read state.
  */
-export function tacticTally({ options, values = [], onChange = null }) {
+export function tacticTally({ options, values = [], onChange = null, getScore = null }) {
     const map = new Map();
     for (const v of values) map.set(v.tactic_slug, { attempts: v.attempts || 0, successes: v.successes || 0 });
 
     const container = el('div', { class: 'tactic-tally-list' });
+    // Progress against the actual score. Without it there is no way to know
+    // when the tally is finished, or that it has drifted away from the score.
+    const summary = el('div', {
+        style: {
+            fontFamily: 'var(--mono)', fontSize: '12px', letterSpacing: '0.06em',
+            padding: '8px 0 10px', color: '#6B7280'
+        }
+    });
+
+    function landed() {
+        let n = 0;
+        for (const v of map.values()) n += v.successes;
+        return n;
+    }
+
+    function paintSummary() {
+        const done = landed();
+        const score = getScore ? Number(getScore()) : null;
+        if (!score) {
+            summary.textContent = done ? `${done} touch${done === 1 ? '' : 'es'} logged` : '';
+            summary.style.color = '#6B7280';
+            return;
+        }
+        if (done === score) {
+            summary.textContent = `All ${score} of your touches accounted for`;
+            summary.style.color = '#1f7a1f';
+        } else if (done > score) {
+            summary.textContent = `${done} logged but you scored ${score} - one of these is wrong`;
+            summary.style.color = '#9b2230';
+        } else {
+            summary.textContent = `${done} of your ${score} touches logged - ${score - done} to go`;
+            summary.style.color = '#B45309';
+        }
+    }
 
     function rerender() {
         container.innerHTML = '';
+        container.appendChild(summary);
         for (const o of options) {
             const cur = map.get(o.slug) || { attempts: 0, successes: 0 };
+            const missed = Math.max(0, cur.attempts - cur.successes);
             const row = el('div', { class: 'tactic-tally' }, [
                 el('div', { class: 'name' }, [o.label]),
-                el('div', { class: 'pill ' + (cur.successes > 0 ? 'success' : '') }, [
-                    el('button', { type: 'button', class: 'delta', onclick: () => bump(o.slug, 'successes', -1) }, ['−']),
-                    el('span', {}, [`${cur.successes} ✓`]),
-                    el('button', { type: 'button', class: 'delta', onclick: () => bump(o.slug, 'successes', +1) }, ['+'])
+                // Words, not symbols. A green tick and a red cross do not say
+                // which is "touches this won me" and which is "times I tried it
+                // and missed" - and the two rows look interchangeable without a
+                // label on each.
+                el('div', { class: 'pill ' + (cur.successes > 0 ? 'success' : ''), style: { color: cur.successes > 0 ? '' : '#1A1D24' } }, [
+                    el('button', { type: 'button', class: 'delta', 'aria-label': `${o.label} scored, one fewer`, onclick: () => bump(o.slug, 'successes', -1) }, ['−']),
+                    el('span', {}, [`${cur.successes} scored`]),
+                    el('button', { type: 'button', class: 'delta', 'aria-label': `${o.label} scored, one more`, onclick: () => bump(o.slug, 'successes', +1) }, ['+'])
                 ]),
-                el('div', { class: 'pill ' + (cur.attempts - cur.successes > 0 ? 'fail' : '') }, [
-                    el('button', { type: 'button', class: 'delta', onclick: () => bump(o.slug, 'attempts', -1) }, ['−']),
-                    el('span', {}, [`${Math.max(0, cur.attempts - cur.successes)} ✗`]),
-                    el('button', { type: 'button', class: 'delta', onclick: () => bump(o.slug, 'attempts', +1) }, ['+'])
+                el('div', { class: 'pill ' + (missed > 0 ? 'fail' : ''), style: { color: missed > 0 ? '' : '#1A1D24' } }, [
+                    el('button', { type: 'button', class: 'delta', 'aria-label': `${o.label} missed, one fewer`, onclick: () => bump(o.slug, 'attempts', -1) }, ['−']),
+                    el('span', {}, [`${missed} missed`]),
+                    el('button', { type: 'button', class: 'delta', 'aria-label': `${o.label} missed, one more`, onclick: () => bump(o.slug, 'attempts', +1) }, ['+'])
                 ])
             ]);
             container.appendChild(row);
         }
+        paintSummary();
     }
+
+    // The score lives outside this widget, so it has to be told when it moves.
+    container.refreshSummary = paintSummary;
 
     function bump(slug, key, delta) {
         const cur = map.get(slug) || { attempts: 0, successes: 0 };
