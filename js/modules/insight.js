@@ -11,7 +11,7 @@
 // The screen does not pick one. It projects the next events under both and
 // lets the gap between them say what it says.
 
-import { el } from '../lib/util.js';
+import { el, toast } from '../lib/util.js';
 import { supa } from '../lib/supa.js';
 import { activeProfile } from '../lib/state.js';
 
@@ -72,15 +72,31 @@ export async function mountInsight(root) {
     body.appendChild(el('div', { class: 'empty' }, [el('p', { class: 'empty-line' }, ['Reading the results…'])]));
 
     const today = new Date().toISOString().slice(0, 10);
-    const [formRes, detailRes, eventsRes, bandsRes, goalsRes, rulesRes, casesRes] = await Promise.all([
+    const [formRes, detailRes, eventsRes, bandsRes, goalsRes, rulesRes, casesRes, oppRes, winRes, flagRes, briefRes] = await Promise.all([
         supa.from('fencer_form').select('*').eq('profile_id', profile.id),
         supa.from('fencer_form_detail').select('*').eq('profile_id', profile.id),
         supa.from('events').select('*').gte('event_date', today).order('event_date'),
         supa.from('event_strength_bands').select('*').not('event_id', 'is', null),
         supa.from('event_goals').select('*').eq('profile_id', profile.id),
         supa.from('pathway_rules').select('*').order('sort_order'),
-        supa.from('pathway_cases').select('*').order('birth_year')
+        supa.from('pathway_cases').select('*').order('birth_year'),
+        supa.from('opponent_profiles').select('tracker_id,name,club,birth_year,rating,strength_de,strength_pool,tracker_url'),
+        supa.from('opponent_windows').select('*'),
+        supa.from('opponent_flags').select('tracker_id,flags,days_since_last'),
+        supa.from('coach_notes').select('response_text,created_at,input_summary').eq('profile_id', profile.id).eq('kind', 'opponent-tier').order('created_at', { ascending: false })
     ]);
+    const oppById = new Map((oppRes.data || []).map((o) => [o.tracker_id, o]));
+    const winsById = new Map();
+    for (const w of (winRes.data || [])) {
+        if (!winsById.has(w.tracker_id)) winsById.set(w.tracker_id, {});
+        winsById.get(w.tracker_id)[w.window_days] = w;
+    }
+    const flagsById = new Map((flagRes.data || []).map((f) => [f.tracker_id, f]));
+    const briefByEvent = new Map();
+    for (const n of (briefRes.data || [])) {
+        const k = n.input_summary?.event_id;
+        if (k && !briefByEvent.has(k)) briefByEvent.set(k, n);
+    }
 
     body.innerHTML = '';
     const forms = formRes.data || [];
@@ -197,6 +213,18 @@ export async function mountInsight(root) {
                 `Recent ${catLabel(e.category)} form points ${better} than the seeding does.`
             ]));
         }
+
+        if (e.tracker_url) {
+            card.appendChild(el('a', {
+                href: e.tracker_url, target: '_blank', rel: 'noopener', class: 'label',
+                style: { color: 'var(--cta, #0071e3)', display: 'inline-block', marginTop: '10px' }
+            }, ['Full entry list on FencingTracker \u2192']));
+        }
+
+        // The tier above: the fencers one band up, read from twelve months of
+        // their own results. Strength says where they are seeded; the windows
+        // say what they have actually done lately.
+        card.appendChild(await tierBlock(e, profile, goal, oppById, winsById, flagsById, briefByEvent.get(e.id)));
         body.appendChild(card);
     }
 
@@ -276,4 +304,105 @@ export async function mountInsight(root) {
         '(Senior, Div II) are shown but not counted. Form uses a 90-day half-life and counts results from other ',
         'categories at half weight.'
     ]));
+}
+
+const pctColor = (v) => v == null ? INK_MUTE : v <= 15 ? GOOD : v <= 40 ? INK : INK_MUTE;
+
+async function tierBlock(e, profile, goal, oppById, winsById, flagsById, cachedBrief) {
+    const wrap = el('div', { style: { marginTop: '14px', borderTop: '1px solid var(--rule)', paddingTop: '12px' } });
+    let tier = [];
+    try {
+        const { data, error } = await supa.rpc('tier_above', { p_event_id: e.id, p_profile_id: profile.id });
+        if (error) throw error;
+        tier = data || [];
+    } catch (err) {
+        wrap.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '13px' } }, ['Could not load the tier: ' + (err.message || err)]));
+        return wrap;
+    }
+    if (!tier.length) {
+        wrap.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '13px' } }, ['No entry list loaded for this event yet.']));
+        return wrap;
+    }
+
+    const bandLabel = tier[0]?.band ? `seeds ${tier[0].band}` : '';
+    wrap.appendChild(el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' } }, [
+        label(`The tier above ${goal?.seed_estimate ? `seed ${goal.seed_estimate}` : profile.name}`),
+        el('span', { class: 'label', style: { color: INK_MUTE } }, [`${tier.length} fencers \u00b7 ${bandLabel}`])
+    ]));
+    wrap.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '2px 0 8px', lineHeight: '1.5' } }, [
+        'Median finish as a percentage of the field over 3, 6, 9 and 12 months \u2014 lower is better, 10 means top tenth. ',
+        'Flags are read from placings alone.'
+    ]));
+
+    // column header
+    wrap.appendChild(el('div', { style: { display: 'grid', gridTemplateColumns: '34px 1fr 52px 52px 52px 52px', gap: '8px', alignItems: 'baseline', padding: '4px 0' } }, [
+        el('span', { class: 'label', style: { color: INK_MUTE } }, ['#']),
+        el('span', { class: 'label', style: { color: INK_MUTE } }, ['Fencer']),
+        ...['3 mo', '6 mo', '9 mo', '12 mo'].map((t) => el('span', { class: 'label', style: { color: INK_MUTE, textAlign: 'right' } }, [t]))
+    ]));
+
+    for (const t of tier) {
+        const o = oppById.get(t.tracker_id) || {};
+        const w = winsById.get(t.tracker_id) || {};
+        const fl = flagsById.get(t.tracker_id)?.flags || [];
+        const m = (d) => w[d]?.median_pct;
+        const row = el('div', { style: { borderTop: '1px solid var(--rule)', padding: '9px 0' } });
+        row.appendChild(el('div', { style: { display: 'grid', gridTemplateColumns: '34px 1fr 52px 52px 52px 52px', gap: '8px', alignItems: 'baseline' } }, [
+            el('span', { class: 'num', style: { color: INK_MUTE, fontSize: '12px' } }, [String(t.rank)]),
+            el('div', {}, [
+                o.tracker_url
+                    ? el('a', { href: o.tracker_url, target: '_blank', rel: 'noopener', style: { color: INK, fontSize: '15px', fontWeight: '700', textDecoration: 'none' } }, [o.name || `#${t.tracker_id}`])
+                    : el('span', { style: { color: INK, fontSize: '15px', fontWeight: '700' } }, [o.name || `#${t.tracker_id}`]),
+                el('div', { class: 'label', style: { color: INK_MUTE, marginTop: '2px' } }, [
+                    [o.club, o.rating, o.strength_de ? `DE ${o.strength_de}` : null, o.strength_pool ? `pool ${o.strength_pool}` : null].filter(Boolean).join(' \u00b7 ')
+                ])
+            ]),
+            ...[90, 180, 270, 365].map((d) => el('span', { class: 'num', style: { color: pctColor(m(d)), fontSize: '14px', textAlign: 'right', fontWeight: (m(d) != null && m(d) <= 15) ? '700' : '500' } }, [m(d) == null ? '\u2014' : `${m(d)}%`]))
+        ]));
+        if (fl.length) {
+            row.appendChild(el('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' } },
+                fl.map((f) => {
+                    const [head, detail] = String(f).split(':');
+                    const bad = /rusty|fades|dropping|thin|soft|erratic|no results/i.test(head);
+                    return el('span', {
+                        class: 'label', title: detail || '',
+                        style: { border: '1px solid ' + (bad ? WARN : 'var(--rule-strong)'), color: bad ? WARN : INK_MUTE, borderRadius: 'var(--r-pill)', padding: '3px 8px', fontWeight: bad ? '700' : '500' }
+                    }, [head + (detail ? ` \u00b7 ${detail}` : '')]);
+                })));
+        }
+        wrap.appendChild(row);
+    }
+
+    // The brief: one AI read of the whole tier, cached per event.
+    const briefOut = el('div', {});
+    const renderBrief = (n) => {
+        briefOut.innerHTML = '';
+        if (!n) return;
+        briefOut.appendChild(el('div', { class: 'label', style: { color: INK_MUTE, marginTop: '14px' } }, [
+            `Coach brief \u00b7 ${String(n.created_at).slice(0, 10)}`
+        ]));
+        String(n.response_text || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).forEach((p) => {
+            briefOut.appendChild(el('p', { style: { color: INK, fontSize: '14px', lineHeight: '1.6', margin: '8px 0 0' } }, [p]));
+        });
+    };
+    renderBrief(cachedBrief);
+
+    const btn = el('button', { class: 'btn btn-mono-label', style: { marginTop: '12px', width: '100%' } }, [cachedBrief ? 'Refresh the brief' : 'Brief this tier']);
+    btn.onclick = async () => {
+        btn.disabled = true; btn.textContent = 'Reading twelve months of results\u2026';
+        try {
+            const { data, error } = await supa.functions.invoke('claude-coach', { body: { action: 'opponent-tier-brief', profile_id: profile.id, event_id: e.id } });
+            if (error) throw error;
+            if (data?.error) throw new Error(data.error);
+            renderBrief({ response_text: data.text, created_at: new Date().toISOString() });
+            toast('Brief ready');
+            btn.textContent = 'Refresh the brief';
+        } catch (err) {
+            toast('Could not brief: ' + (err.message || err), 'error');
+            btn.textContent = cachedBrief ? 'Refresh the brief' : 'Brief this tier';
+        } finally { btn.disabled = false; }
+    };
+    wrap.appendChild(btn);
+    wrap.appendChild(briefOut);
+    return wrap;
 }
