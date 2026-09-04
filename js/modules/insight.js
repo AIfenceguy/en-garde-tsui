@@ -72,12 +72,14 @@ export async function mountInsight(root) {
     body.appendChild(el('div', { class: 'empty' }, [el('p', { class: 'empty-line' }, ['Reading the results…'])]));
 
     const today = new Date().toISOString().slice(0, 10);
-    const [formRes, detailRes, eventsRes, bandsRes, goalsRes] = await Promise.all([
+    const [formRes, detailRes, eventsRes, bandsRes, goalsRes, rulesRes, casesRes] = await Promise.all([
         supa.from('fencer_form').select('*').eq('profile_id', profile.id),
         supa.from('fencer_form_detail').select('*').eq('profile_id', profile.id),
         supa.from('events').select('*').gte('event_date', today).order('event_date'),
         supa.from('event_strength_bands').select('*').not('event_id', 'is', null),
-        supa.from('event_goals').select('*').eq('profile_id', profile.id)
+        supa.from('event_goals').select('*').eq('profile_id', profile.id),
+        supa.from('pathway_rules').select('*').order('sort_order'),
+        supa.from('pathway_cases').select('*').order('birth_year')
     ]);
 
     body.innerHTML = '';
@@ -196,6 +198,40 @@ export async function mountInsight(root) {
             ]));
         }
         body.appendChild(card);
+    }
+
+    // --- How fencers actually climb -----------------------------------------
+    // The rules a new fencing parent is never told, each with the evidence it
+    // came from. Rules tagged for the unrated apply to Kaylan; the rest to both.
+    const rules = (rulesRes.data || []).filter((r) =>
+        r.applies_to === 'everyone' || (r.applies_to === 'unrated' && !profile.rating) || r.applies_to === String(profile.rating || '').toLowerCase()
+    );
+    const cases = casesRes.data || [];
+    if (rules.length || cases.length) {
+        body.appendChild(label('How fencers actually climb', INK_MUTE, { margin: '18px var(--gut) 6px' }));
+        body.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '0 var(--gut) 10px', lineHeight: '1.5' } }, [
+            'Read off real FencingTracker histories. Each rule carries the result it came from.'
+        ]));
+        for (const r of rules) {
+            body.appendChild(el('div', { class: 'card', style: { margin: '0 var(--gut) 10px' } }, [
+                serif(r.rule, '19px'),
+                el('p', { style: { color: INK_MUTE, fontSize: '13px', lineHeight: '1.6', margin: '8px 0 0' } }, [r.evidence])
+            ]));
+        }
+        for (const c of cases) {
+            body.appendChild(el('div', { class: 'card', style: { margin: '0 var(--gut) 10px' } }, [
+                el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' } }, [
+                    el('span', { style: { color: INK, fontSize: '15px', fontWeight: '600' } }, [c.fencer]),
+                    el('span', { class: 'label', style: { color: INK_MUTE } }, [`${c.birth_year} · ${c.club}`])
+                ]),
+                serif(c.headline, '20px', GOOD),
+                el('p', { style: { color: INK, fontSize: '13px', lineHeight: '1.6', margin: '8px 0 0' } }, [c.detail]),
+                c.tracker_url
+                    ? el('a', { href: c.tracker_url, target: '_blank', rel: 'noopener', class: 'label',
+                               style: { color: 'var(--cta, #0071e3)', display: 'inline-block', marginTop: '8px' } }, ['Profile on FencingTracker →'])
+                    : null
+            ]));
+        }
     }
 
     // --- Results, with what each one implies ------------------------------
