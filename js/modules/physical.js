@@ -427,7 +427,7 @@ export async function mountPhysical(root) {
             injury_notes: injuryNotes.value.trim() || null
         };
         try {
-            await safeWrite({ table: 'physical_sessions', op: 'upsert', payload });
+            await safeWrite({ table: 'physical_sessions', op: 'upsert', payload, onConflict: 'profile_id,date' });
             toast('Saved' + (navigator.onLine ? '' : ' (offline — will sync)'));
         } catch (e) { toast('Save failed: ' + e.message, 'error'); }
     }

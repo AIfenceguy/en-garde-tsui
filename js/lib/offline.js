@@ -91,10 +91,15 @@ async function remove(id) {
 }
 
 async function applyOne(entry) {
-    const { table, op, payload, match } = entry;
+    const { table, op, payload, match, onConflict } = entry;
     const t = supa.from(table);
     if (op === 'insert') return t.insert(payload).select();
-    if (op === 'upsert') return t.upsert(payload).select();
+    // onConflict names the unique key an upsert should merge on. Without it
+    // PostgREST resolves on the primary key alone, and since these payloads
+    // never carry an id the second save of a day was a plain insert into
+    // a (profile_id, date) unique key - rejected, so the edit never landed.
+    // enqueue() spreads the whole entry, so a queued upsert keeps its key.
+    if (op === 'upsert') return t.upsert(payload, onConflict ? { onConflict } : undefined).select();
     if (op === 'update') {
         let q = t.update(payload);
         for (const [k, v] of Object.entries(match || {})) q = q.eq(k, v);
