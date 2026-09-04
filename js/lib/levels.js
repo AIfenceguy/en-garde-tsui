@@ -11,10 +11,10 @@
 export const ABILITIES = ['strike', 'guard', 'engine', 'mind'];
 
 export const ABILITY_META = {
-    strike: { label: 'Strike',  icon: '⚔️', color: '#c0392b' },
-    guard:  { label: 'Guard',   icon: '🛡️', color: '#2d6a96' },
-    engine: { label: 'Engine',  icon: '⚡', color: '#f1c40f' },
-    mind:   { label: 'Mind',    icon: '🧠', color: '#8e44ad' }
+    strike: { label: 'Strike',  icon: '', color: '#c0392b' },
+    guard:  { label: 'Guard',   icon: '', color: '#2d6a96' },
+    engine: { label: 'Engine',  icon: '', color: '#f1c40f' },
+    mind:   { label: 'Mind',    icon: '', color: '#8e44ad' }
 };
 
 // Tier thresholds and colors (Lv → tier name)
@@ -135,17 +135,22 @@ function makeAbility(xp) {
 
 export function paceProjection(ability, recentDailyXp, targetLevel, daysRemaining) {
     const xpNeeded = Math.max(0, targetLevel * 100 - ability.totalXp);
-    const xpPerDay = daysRemaining > 0 ? xpNeeded / daysRemaining : Infinity;
-    const onTrackThreshold = xpPerDay;
+    // No days left means no per-day figure exists. Dividing by zero here
+    // produced Infinity, which was then printed into the card as
+    // "Infinity/day to Lv 30".
+    const pastDate = !(daysRemaining > 0);
+    const xpPerDay = pastDate ? null : xpNeeded / daysRemaining;
     let status;
     if (ability.totalXp >= targetLevel * 100) status = 'done';
     else if (ability.totalXp === 0)            status = 'not_started';
+    else if (pastDate)                         status = 'behind';
     else if (recentDailyXp >= xpPerDay)        status = 'on_track';
     else if (recentDailyXp >= xpPerDay * 0.5)  status = 'close';
     else                                       status = 'behind';
     return {
         xpNeeded,
-        xpPerDayNeeded: Math.ceil(xpPerDay),
+        xpPerDayNeeded: pastDate ? null : Math.ceil(xpPerDay),
+        pastDate,
         recentDailyXp: Math.round(recentDailyXp),
         status,
         daysRemaining

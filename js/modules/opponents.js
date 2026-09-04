@@ -922,7 +922,7 @@ async function buildFtIntelPanel(opp) {
     const headlinePlan = intel.headline_plan ? `<div class="ft-intel-headline-plan">${intel.headline_plan}</div>` : '';
     wrap.innerHTML = `
         <div class="ft-intel-head">
-            <span class="ft-intel-label">🥷 FT SCOUT INTEL</span>
+            <span class="ft-intel-label">FT Scout Intel</span>
             <div class="ft-intel-ranks">${ranks}</div>
             <a class="ft-intel-link" href="${intel.ft_url}" target="_blank" rel="noopener">↗ FT profile</a>
         </div>

@@ -7,7 +7,6 @@ import { activeProfile } from '../lib/state.js';
 import { computeAbilities, recentDailyXp, paceProjection, ABILITIES, ABILITY_META, targetLevelFor, SUMMER_NATIONALS_DATE, daysUntil as daysUntilLevels, computeStreak } from '../lib/levels.js';
 import { generateCoachTips } from '../lib/coach-ai.js';
 import { maybeShowLevelUp } from '../lib/level-up-modal.js';
-import { avatarSvg } from '../lib/avatars.js';
 import { earnedMilestones, MILESTONES } from '../lib/milestones.js';
 import {
     nextTournament, getPhysicalForDate, getMentalForDate,
@@ -49,7 +48,7 @@ export async function mountDashboard(root) {
     let activeStreak = 0;
     try { const myInputs = await fetchXpInputs(profile.id); activeStreak = computeStreak(myInputs).streak; } catch(e){}
     const heroBitsWithStreak = [...heroSubBits];
-    if (activeStreak > 0) heroBitsWithStreak.unshift(el('span', { class: 'hero-streak' }, ['🔥 ', String(activeStreak), '-day streak']));
+    if (activeStreak > 0) heroBitsWithStreak.unshift(el('span', { class: 'hero-streak' }, [String(activeStreak), '-day streak']));
 
     root.appendChild(el('div', { class: 'today-hero stagger' }, [
         el('h1', { class: 'today-greeting' }, [
@@ -351,7 +350,7 @@ async function buildLevelDashboard() {
     const wrap = el('section', { class: 'level-dash stagger' });
 
     wrap.appendChild(el('div', { class: 'label-row', style: { marginTop: '32px' } }, [
-        el('span', { class: 'label' }, ['⚔️ Your Stats · Boss Battle: Summer Nationals']),
+        el('span', { class: 'label' }, ['Your Stats · Boss Battle: Summer Nationals']),
         el('span', { class: 'label label-gold' }, [
             days === 0 ? 'today' : `${days} day${days===1?'':'s'} to go`
         ])
@@ -362,8 +361,10 @@ async function buildLevelDashboard() {
         const abilities = abilitiesByKid[i];
         const recent = recentByKid[i];
         const streak = computeStreak(inputsByKid[i]);
-        const avatarTile = el('div', { class: 'avatar-tile avatar-svg', style: { background: kid.accent_hex || '#888' } });
-        avatarTile.innerHTML = avatarSvg(kid.role);
+        const avatarTile = el('div', {
+            class: 'avatar-tile avatar-initial',
+            style: { '--accent': kid.accent_hex || 'var(--gold)' }
+        }, [String(kid.name || '?').trim().charAt(0).toUpperCase()]);
         const earned = earnedMilestones(inputsByKid[i]);
         const earnedSet = new Set(earned.map(m => m.id));
         const card = el('div', { class: 'level-card', style: { borderTop: `4px solid ${kid.accent_hex || '#888'}` } }, [
@@ -372,13 +373,13 @@ async function buildLevelDashboard() {
                 el('div', { class: 'level-card-titles' }, [
                     el('div', { class: 'level-name' }, [kid.name]),
                     el('div', { class: 'level-meta' }, [
-                        el('span', { class: 'streak-pill', title: 'Days logged in a row' }, ['🔥 ', String(streak.streak), 'd streak']),
-                        el('span', { class: 'badges-pill', title: 'Milestones earned' }, ['🏅 ', String(earned.length), '/', String(MILESTONES.length)])
+                        el('span', { class: 'streak-pill', title: 'Days logged in a row' }, [String(streak.streak), '-day streak']),
+                        el('span', { class: 'badges-pill', title: 'Milestones earned' }, [String(earned.length), ' of ', String(MILESTONES.length), ' milestones'])
                     ])
                 ])
             ]),
             el('div', { class: 'badge-strip', title: 'Milestone badges (faded = locked)' }, MILESTONES.slice(0, 13).map(m =>
-                el('span', { class: 'badge-stamp ' + (earnedSet.has(m.id) ? 'is-earned' : 'is-locked'), title: m.name }, [m.icon])
+                el('span', { class: 'badge-stamp ' + (earnedSet.has(m.id) ? 'is-earned' : 'is-locked'), title: m.name }, [m.mark || ''])
             ))
         ]);
         for (const k of ABILITIES) {
@@ -395,17 +396,21 @@ function abilityRow(key, ability, dailyXp, days) {
     const meta = ABILITY_META[key];
     const target = targetLevelFor(key);
     const pace = paceProjection(ability, dailyXp || 0, target, days);
-    const paceIcon =
-        pace.status === 'done'        ? '👑' :
-        pace.status === 'not_started' ? '🎮' :
-        pace.status === 'on_track'    ? '⚡' :
-        pace.status === 'close'       ? '⏰' : '💪';
+    // Copy for an athlete's stat sheet, not an arcade. States are named the
+    // way a coach would name them, and a past target date says so rather than
+    // printing a non-number.
+    const perDay = pace.xpPerDayNeeded == null ? null : `${pace.xpPerDayNeeded} XP/day`;
     const paceText =
-        pace.status === 'done'        ? `BOSS DEFEATED · MAX LV ${target}` :
-        pace.status === 'not_started' ? `Start your quest! Goal: Lv ${target}` :
-        pace.status === 'on_track'    ? `LEVELING UP! ~${Math.round(dailyXp)} XP/day` :
-        pace.status === 'close'       ? `Almost there · ${pace.xpPerDayNeeded}/day to Lv ${target}` :
-                                        `Push it! ${pace.xpPerDayNeeded}/day to Lv ${target}`;
+        pace.status === 'done'        ? `Target reached · Lv ${target}` :
+        pace.status === 'not_started' ? `Nothing logged yet · target Lv ${target}` :
+        pace.pastDate                 ? `Target date passed · Lv ${target} not reached` :
+        pace.status === 'on_track'    ? `On pace · ${Math.round(dailyXp)} XP/day` :
+        pace.status === 'close'       ? `Close · needs ${perDay} for Lv ${target}` :
+                                        `Behind · needs ${perDay} for Lv ${target}`;
+    const paceClass =
+        pace.status === 'done' || pace.status === 'on_track' ? 'is-good' :
+        pace.status === 'close' ? 'is-close' :
+        pace.status === 'not_started' ? 'is-idle' : 'is-behind';
     return el('div', { class: `ability-row tier-${ability.rank.tier} ${key}`, 'data-ability': key }, [
         el('div', { class: 'ability-head' }, [
             el('span', { class: 'level-badge' }, [
@@ -413,10 +418,8 @@ function abilityRow(key, ability, dailyXp, days) {
                 el('span', { class: 'level-num' }, [String(ability.level)])
             ]),
             el('div', { class: 'ability-icon-name' }, [
-                el('span', { class: 'ability-icon' }, [meta.icon]),
                 el('span', { class: 'ability-label' }, [meta.label.toUpperCase()])
-            ]),
-            el('span', { class: 'ability-pace-icon', style: { fontSize: '16px' } }, [paceIcon])
+            ])
         ]),
         el('div', { class: 'ability-bar' }, [
             el('div', {
@@ -428,7 +431,7 @@ function abilityRow(key, ability, dailyXp, days) {
             el('span', { class: 'ability-xp' }, [
                 String(ability.xpToNext), ' / 100 XP'
             ]),
-            el('span', { class: 'ability-pace' }, [paceText])
+            el('span', { class: 'ability-pace ' + paceClass }, [paceText])
         ])
     ]);
 }
@@ -444,9 +447,9 @@ async function buildAICoachSection(profile) {
 
     const wrap = el('section', { class: 'coach-tips stagger', style: { padding: '0 var(--gut)', marginTop: '28px' } });
     wrap.appendChild(el('div', { class: 'label-row' }, [
-        el('span', { class: 'label' }, ['🎯 Daily Quests · Level Up!']),
+        el('span', { class: 'label' }, ['Daily Quests · Level Up!']),
         el('span', { class: 'label label-gold' }, [
-            result.weeklyXpForecast > 0 ? `+${result.weeklyXpForecast} XP / week 💎 if you finish all quests` : `${result.boutCount} bouts analyzed`
+            result.weeklyXpForecast > 0 ? `+${result.weeklyXpForecast} XP / week if every planned session is done` : `${result.boutCount} bouts analyzed`
         ])
     ]));
 
@@ -482,7 +485,7 @@ function coachTipCard(tip) {
                 el('span', { class: 'sep' }, ['·']),
                 el('span', {}, [d.frequency]),
                 el('span', { class: 'sep' }, ['·']),
-                el('span', { class: 'xp-badge' }, [`+${d.xpPerSession} XP/session  ⚡ +${d.xpPerWeek}/week`])
+                el('span', { class: 'xp-badge' }, [`+${d.xpPerSession} XP/session  · +${d.xpPerWeek}/week`])
             ])
         ]));
     }
