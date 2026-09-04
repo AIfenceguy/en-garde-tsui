@@ -1049,3 +1049,64 @@ h1, h2, h3, h4, h5, h6,
 .ability-pace.is-close  { color: #B45309 !important; }
 .ability-pace.is-behind { color: #9b2230 !important; }
 .ability-pace.is-idle   { color: #6B7280 !important; }
+
+
+/* =====================================================================
+   Coach tips and coach card: the "Roblox-style quest accents" block in
+   style.css gave these gradients, a glowing animated XP pill, hover-lift
+   and quest labels in gold. Replaced with the house system.
+   ===================================================================== */
+.coach-tip, .coach-tip-p1, .coach-tip-p2, .coach-tip-p3 {
+    background: var(--surface) !important;
+    border: 1px solid var(--rule) !important;
+    border-left: 1px solid var(--rule) !important;
+    border-radius: var(--r-card) !important;
+    box-shadow: none !important;
+    padding: 16px 18px !important;
+    transition: none !important;
+    transform: none !important;
+    cursor: default !important;
+}
+.coach-tip-p1 { border-left: 3px solid var(--gold) !important; }
+.coach-tip:hover, .coach-tip:focus-within, .coach-tip:active { transform: none !important; box-shadow: none !important; }
+.coach-tip-label {
+    font-family: var(--mono) !important; font-size: 10.5px !important; font-weight: 500 !important;
+    letter-spacing: 0.22em !important; text-transform: uppercase; color: #6B7280 !important;
+}
+.coach-tip-title {
+    font-family: var(--serif) !important; font-style: italic; font-weight: 500 !important;
+    font-size: 23px !important; color: var(--ink) !important;
+}
+.coach-tip-meta, .coach-why { font-family: var(--sans); font-size: 13px; color: #6B7280 !important; font-style: normal !important; }
+.coach-why { font-family: var(--serif); font-style: italic !important; font-size: 15px; }
+.coach-quote { border-left: 2px solid var(--rule-strong) !important; font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--ink) !important; }
+.coach-drill { background: transparent !important; border: 1px solid var(--rule); border-radius: var(--r-card); padding: 12px 14px !important; }
+.coach-drill-name { font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 19px; color: var(--ink) !important; }
+.coach-drill-prescription { font-family: var(--mono) !important; font-size: 10.5px !important; letter-spacing: 0.08em; color: #6B7280 !important; }
+.coach-drill-prescription .sep { color: var(--rule-strong) !important; }
+.coach-drill-prescription .xp-badge {
+    background: transparent !important; box-shadow: none !important; animation: none !important;
+    border: 1px solid var(--rule-strong); border-radius: var(--r-pill);
+    font-family: var(--mono); font-size: 10px !important; font-weight: 500 !important;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink) !important; padding: 2px 9px !important;
+}
+.coach-reminder {
+    background: transparent !important; border: 1px solid var(--rule) !important; border-left: 1px solid var(--rule) !important;
+    border-radius: var(--r-card); padding: 12px 14px; font-family: var(--sans); font-size: 13.5px;
+    line-height: 1.55; color: var(--ink) !important; font-weight: 400 !important;
+}
+
+/* Coach card (drill-coach.js) */
+.coach-card-eyebrow { color: #6B7280; margin-bottom: 6px; }
+.coach-block { padding: 12px 0 10px; border-top: 1px solid var(--rule); }
+.coach-block:first-of-type { border-top: none; }
+.coach-block-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.coach-block-title { font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 21px; color: var(--ink); }
+.coach-stage { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #6B7280; }
+.coach-line { font-family: var(--sans); font-size: 13.5px; line-height: 1.5; margin: 3px 0; color: var(--ink); }
+.coach-line.is-good { color: #1f7a1f; }
+.coach-line.is-bad  { color: #9b2230; }
+.coach-line.is-mute { color: #6B7280; }
+.coach-next { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.coach-next .label { color: #6B7280; }
+.coach-next-text { font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.4; color: var(--ink); }

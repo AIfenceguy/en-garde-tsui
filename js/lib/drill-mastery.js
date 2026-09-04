@@ -7,19 +7,19 @@ import { supa } from './supa.js';
 
 // Stage definitions
 export const STAGES = [
-    { idx: 0, slug: 'learning',    emoji: '🌱', label: 'Learning',    blurb: 'Just feel it — slow, sloppy is fine.' },
-    { idx: 1, slug: 'form',        emoji: '🌿', label: 'Form',        blurb: 'Clean execution at training pace.' },
-    { idx: 2, slug: 'tempo',       emoji: '🌳', label: 'Tempo',       blurb: 'Clean at fencing pace — automatic.' },
-    { idx: 3, slug: 'pressure',    emoji: '⚔️', label: 'Pressure',    blurb: 'Holds under fatigue and resistance.' },
-    { idx: 4, slug: 'match-ready', emoji: '🏆', label: 'Match-ready', blurb: 'Showed up in a real bout.' }
+    { idx: 0, slug: 'learning',    emoji: '', label: 'Learning',    blurb: 'Just feel it — slow, sloppy is fine.' },
+    { idx: 1, slug: 'form',        emoji: '', label: 'Form',        blurb: 'Clean execution at training pace.' },
+    { idx: 2, slug: 'tempo',       emoji: '', label: 'Tempo',       blurb: 'Clean at fencing pace — automatic.' },
+    { idx: 3, slug: 'pressure',    emoji: '', label: 'Pressure',    blurb: 'Holds under fatigue and resistance.' },
+    { idx: 4, slug: 'match-ready', emoji: '', label: 'Match-ready', blurb: 'Showed up in a real bout.' }
 ];
 
 export const RATINGS = [
-    { val: 1, emoji: '😵‍💫', label: 'sloppy' },
-    { val: 2, emoji: '🙂',    label: 'ok' },
-    { val: 3, emoji: '💪',    label: 'sharp' },
-    { val: 4, emoji: '⚡',    label: 'fast' },
-    { val: 5, emoji: '🎯',    label: 'dialled-in' }
+    { val: 1, emoji: '', label: 'sloppy' },
+    { val: 2, emoji: '', label: 'ok' },
+    { val: 3, emoji: '', label: 'sharp' },
+    { val: 4, emoji: '', label: 'fast' },
+    { val: 5, emoji: '', label: 'dialled-in' }
 ];
 
 // Compute mastery stage for a single drill from its session history.

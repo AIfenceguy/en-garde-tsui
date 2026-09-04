@@ -13,6 +13,7 @@ import {
     listBouts, listOpponents, listAllProfiles, fetchXpInputs
 } from '../lib/db.js';
 import { todayCoachCard, listCoachNotes } from '../lib/coach.js';
+import { supa } from '../lib/supa.js';
 import { buildWeeklyCoachSummary, renderCoachCard } from '../lib/drill-coach.js';
 
 export async function mountDashboard(root) {
@@ -340,7 +341,17 @@ async function buildLevelDashboard() {
     const abilitiesByKid = inputsByKid.map(d => computeAbilities(d));
     const recentByKid = inputsByKid.map(d => recentDailyXp(d, 7));
 
-    const days = daysUntilLevels(SUMMER_NATIONALS_DATE);
+    // Pace against the next real event on the calendar, not a fixed date.
+    // Falls back to the coming Summer Nationals if nothing is scheduled.
+    let paceName = 'Summer Nationals';
+    let paceDate = SUMMER_NATIONALS_DATE;
+    try {
+        const { data: nextEv } = await supa
+            .from('events').select('name,event_date')
+            .gte('event_date', todayISO()).order('event_date').limit(1);
+        if (nextEv?.[0]) { paceName = nextEv[0].name; paceDate = nextEv[0].event_date; }
+    } catch (_) { /* fall back */ }
+    const days = daysUntilLevels(paceDate);
 
     // Check for level-ups since last load (per kid)
     kids.forEach((kid, i) => {
@@ -350,9 +361,9 @@ async function buildLevelDashboard() {
     const wrap = el('section', { class: 'level-dash stagger' });
 
     wrap.appendChild(el('div', { class: 'label-row', style: { marginTop: '32px' } }, [
-        el('span', { class: 'label' }, ['Your Stats · Boss Battle: Summer Nationals']),
-        el('span', { class: 'label label-gold' }, [
-            days === 0 ? 'today' : `${days} day${days===1?'':'s'} to go`
+        el('span', { class: 'label' }, [`Your stats · pace to ${paceName}`]),
+        el('span', { class: 'label', style: { color: '#6B7280' } }, [
+            days === 0 ? 'today' : `${days} day${days===1?'':'s'}`
         ])
     ]));
 
@@ -447,9 +458,9 @@ async function buildAICoachSection(profile) {
 
     const wrap = el('section', { class: 'coach-tips stagger', style: { padding: '0 var(--gut)', marginTop: '28px' } });
     wrap.appendChild(el('div', { class: 'label-row' }, [
-        el('span', { class: 'label' }, ['Daily Quests · Level Up!']),
+        el('span', { class: 'label' }, ['This week · what to work on']),
         el('span', { class: 'label label-gold' }, [
-            result.weeklyXpForecast > 0 ? `+${result.weeklyXpForecast} XP / week if every planned session is done` : `${result.boutCount} bouts analyzed`
+            result.weeklyXpForecast > 0 ? `+${result.weeklyXpForecast} XP this week if every planned session is done` : `${result.boutCount} bouts analyzed`
         ])
     ]));
 
@@ -464,9 +475,7 @@ async function buildAICoachSection(profile) {
 
 function coachTipCard(tip) {
     const card = el('div', { class: `coach-tip coach-tip-p${tip.priority}` });
-    card.appendChild(el('div', { class: 'coach-tip-label' }, [
-        '#' + tip.priority + ' · ' + tip.label
-    ]));
+    card.appendChild(el('div', { class: 'coach-tip-label' }, [tip.label]));
     card.appendChild(el('div', { class: 'coach-tip-title' }, [tip.title]));
     if (tip.from)       card.appendChild(el('div', { class: 'coach-tip-meta' }, [`from ${tip.from} · mastery ${tip.mastery ?? '?'}/10`]));
     if (tip.diagnosis)  card.appendChild(el('div', { class: 'coach-tip-meta' }, [tip.diagnosis]));
@@ -485,7 +494,7 @@ function coachTipCard(tip) {
                 el('span', { class: 'sep' }, ['·']),
                 el('span', {}, [d.frequency]),
                 el('span', { class: 'sep' }, ['·']),
-                el('span', { class: 'xp-badge' }, [`+${d.xpPerSession} XP/session  · +${d.xpPerWeek}/week`])
+                el('span', { class: 'xp-badge' }, [`+${d.xpPerSession} XP per session · +${d.xpPerWeek} a week`])
             ])
         ]));
     }

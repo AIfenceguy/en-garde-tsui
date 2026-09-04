@@ -149,7 +149,7 @@ export function generateCoachTips(data) {
         const drill = TACTIC_DRILLS[drillKey] || null;
         tips.push({
             priority: 1,
-            label: '⭐ MAIN QUEST · LESSON FOCUS',
+            label: 'Lesson focus',
             title: prettifyTopicSlug(top.slug),
             mastery: top.mastery,
             from: `${top.coach || 'Coach'} · ${top.lessonDate}`,
@@ -178,7 +178,7 @@ export function generateCoachTips(data) {
         const drill = TACTIC_DRILLS[top.drill];
         tips.push({
             priority: 2,
-            label: '🥷 BOSS QUEST · BEAT YOUR NEMESIS',
+            label: 'Beat your nemesis',
             title: `Beat the ${top.reason}`,
             diagnosis: `${top.count} of your recent losses fit this pattern.`,
             drill: drill ? {
@@ -199,7 +199,7 @@ export function generateCoachTips(data) {
         if (drill) {
             tips.push({
                 priority: 3,
-                label: '🔧 SKILL QUEST · MASTER THIS MOVE',
+                label: 'Master this move',
                 title: prettifyTopicSlug(top.slug),
                 diagnosis: `You\'ve tried "${prettifyTopicSlug(top.slug)}" ${top.attempts} times in recent bouts and only landed ${top.successes}. Miss rate: ${Math.round(100 * (1 - top.successes / top.attempts))}%.`,
                 drill: {
@@ -216,9 +216,9 @@ export function generateCoachTips(data) {
 
     // === REMINDERS / META ===
     const reminders = [];
-    if (noReflLosses > 0) reminders.push(`📝 ${noReflLosses} loss(es) have no reflection logged. Fill them in for free MIND XP (+10 each) and better future diagnoses.`);
-    if (bouts.length === 0) reminders.push('🎯 Log your first practice bout this week — even informal touches count. STRIKE XP starts ticking the moment data lands.');
-    if ((data.opponent_swots || []).length === 0 && bouts.length > 0) reminders.push('🔍 You\'ve fenced opponents but profiled 0 of them. Add 4 SWOT chips per opponent = +20 MIND XP each. That\'s easy levels.');
+    if (noReflLosses > 0) reminders.push(`${noReflLosses} loss(es) have no reflection logged. Fill them in: +10 Mind XP each, and better diagnoses next time.`);
+    if (bouts.length === 0) reminders.push('Log your first practice bout this week — even informal touches count. Strike XP starts the moment a bout is logged.');
+    if ((data.opponent_swots || []).length === 0 && bouts.length > 0) reminders.push('You\'ve fenced opponents but profiled 0 of them. Add 4 SWOT chips per opponent = +20 MIND XP each. That\'s easy levels.');
 
     // Weekly XP forecast if they follow the plan
     let weeklyXp = 0;

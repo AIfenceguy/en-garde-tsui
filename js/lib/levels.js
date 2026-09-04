@@ -182,7 +182,16 @@ export function recentDailyXp(data, days = 7) {
 
 export const TARGET_LEVEL = 100;  // legacy fallback
 export const TARGET_LEVELS = { strike: 30, guard: 30, engine: 100, mind: 40 };
-export const SUMMER_NATIONALS_DATE = '2026-07-01';
+// Summer Nationals for the season we are in: July 1 of this year until it has
+// passed, then July 1 of next year. The hardcoded '2026-07-01' meant that from
+// July 2 onwards every track read "Target date passed" - not because the boys
+// were behind, but because the target was dead.
+export function nextSummerNationals(from = new Date()) {
+    const y = from.getFullYear();
+    const thisYear = new Date(`${y}-07-01T00:00:00`);
+    return (from <= thisYear ? y : y + 1) + '-07-01';
+}
+export const SUMMER_NATIONALS_DATE = nextSummerNationals();
 export function targetLevelFor(abilityKey) { return TARGET_LEVELS[abilityKey] || TARGET_LEVEL; }
 
 export function daysUntil(isoDate) {

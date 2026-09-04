@@ -111,62 +111,51 @@ export async function buildWeeklyCoachSummary(profile) {
 // Render a synthesis card. Returns a DOM element.
 export function renderCoachCard(el, summaryList, profile) {
     if (!summaryList.length) return el('div');
-    const card = el('section', { class: 'card', style: { margin: '12px var(--gut)' } });
-    card.appendChild(el('div', {
-        style: 'font-family:var(--eg-mono,monospace);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#6B7280;margin-bottom:8px;'
-    }, [`🧠 Coach card · ${profile.name.split(' ')[0]} · this week`]));
+    const card = el('section', { class: 'card coach-card', style: { margin: '12px var(--gut)' } });
+    card.appendChild(el('div', { class: 'label coach-card-eyebrow' }, [
+        `Coach card · ${profile.name.split(' ')[0]} · this week`
+    ]));
 
     for (const s of summaryList) {
         const w = s.weakness;
-        const block = el('div', { style: 'padding:10px 0;border-top:1px solid rgba(0,0,0,0.06);' });
+        const block = el('div', { class: 'coach-block' });
 
-        // Header: weakness + top stage
-        block.appendChild(el('div', {
-            style: 'display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px;'
-        }, [
-            el('strong', { style: 'font-size:14px;' }, [`${w.emoji} ${w.label}`]),
-            el('span', {
-                style: 'font-family:var(--eg-mono,monospace);font-size:11px;color:#6B7280;'
-            }, [`top stage: ${s.top_stage.emoji} ${s.top_stage.label}`])
+        // Header: weakness + top stage. The archetype data carries an emoji;
+        // it is not rendered.
+        block.appendChild(el('div', { class: 'coach-block-head' }, [
+            el('span', { class: 'coach-block-title' }, [w.label]),
+            el('span', { class: 'coach-stage' }, [`top stage · ${s.top_stage.label}`])
         ]));
 
-        // Transitions
         for (const t of s.transitions) {
-            block.appendChild(el('div', {
-                style: 'font-size:13px;color:#1f7a1f;margin:2px 0;'
-            }, [`✓ ${t.drill}: ${t.from.emoji} ${t.from.label} → ${t.to.emoji} ${t.to.label}`]));
+            block.appendChild(el('div', { class: 'coach-line is-good' }, [
+                `${t.drill}: ${t.from.label} → ${t.to.label}`
+            ]));
         }
-
-        // Stalls
         for (const st of s.stalls) {
-            block.appendChild(el('div', {
-                style: 'font-size:13px;color:#9b2230;margin:2px 0;'
-            }, [`⚠ Stalled at ${st.stage.emoji} ${st.stage.label}: ${st.tag} — try a coach-paced session or up the rep target.`]));
-        }
-
-        // Bout signal
-        if (s.bout_signal) {
-            const bs = s.bout_signal;
-            const txt = `Bout signal (30d): ${bs.wins}-${bs.losses} (${bs.pct}%) vs ${w.label.toLowerCase()}`;
-            block.appendChild(el('div', {
-                style: `font-size:13px;color:${bs.priority === 'high' ? '#9b2230' : '#6B7280'};margin:2px 0;`
-            }, [bs.priority === 'high' ? `🎯 ${txt} — this is your top drill priority.` : `· ${txt}`]));
-        } else {
-            block.appendChild(el('div', {
-                style: 'font-size:12px;color:#6B7280;margin:2px 0;'
-            }, ['· No recent bouts tagged with this archetype — tag opponents to track.']));
-        }
-
-        // Next focus
-        if (s.next_focus) {
-            block.appendChild(el('div', {
-                style: 'font-size:13px;color:#1A1D24;margin-top:4px;'
-            }, [
-                el('strong', { style: 'font-weight:700;' }, ['Next session: ']),
-                `${s.next_focus.tag} — ${nextFocusBlurb(s.next_focus.stage)}`
+            block.appendChild(el('div', { class: 'coach-line is-bad' }, [
+                `Stalled at ${st.stage.label}: ${String(st.tag).replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').trim()} — try a coach-paced session or raise the rep target.`
             ]));
         }
 
+        if (s.bout_signal) {
+            const bs = s.bout_signal;
+            const txt = `Last 30 days: ${bs.wins}–${bs.losses} (${bs.pct}%) against ${w.label.toLowerCase()}`;
+            block.appendChild(el('div', { class: 'coach-line ' + (bs.priority === 'high' ? 'is-bad' : 'is-mute') }, [
+                bs.priority === 'high' ? `${txt} — this is the top drill priority.` : txt
+            ]));
+        } else {
+            block.appendChild(el('div', { class: 'coach-line is-mute' }, [
+                'No recent bouts tagged with this archetype — tag opponents to track it.'
+            ]));
+        }
+
+        if (s.next_focus) {
+            block.appendChild(el('div', { class: 'coach-next' }, [
+                el('span', { class: 'label' }, ['Next session']),
+                el('span', { class: 'coach-next-text' }, [`${String(s.next_focus.tag).replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').trim()} — ${nextFocusBlurb(s.next_focus.stage)}`])
+            ]));
+        }
         card.appendChild(block);
     }
     return card;
@@ -174,10 +163,10 @@ export function renderCoachCard(el, summaryList, profile) {
 
 function nextFocusBlurb(stage) {
     switch (stage.idx) {
-        case 0: return 'get 2 clean sessions logged at "ok" or better to unlock 🌿 Form.';
-        case 1: return 'rack up sessions at "sharp" to reach 🌳 Tempo. Aim for 3 of next 5 at 💪+.';
-        case 2: return 'push pace to "fast". 2 fast-rated sessions unlock ⚔️ Pressure.';
-        case 3: return 'use this in a real bout and tag it to unlock 🏆 Match-ready.';
+        case 0: return 'log two clean sessions at "ok" or better to reach Form.';
+        case 1: return 'log sessions at "sharp" to reach Tempo — three of the next five.';
+        case 2: return 'push the pace to "fast" — two fast-rated sessions reach Pressure.';
+        case 3: return 'use it in a real bout and tag the bout to reach Match-ready.';
         default: return 'maintain — already match-ready. Use it.';
     }
 }
