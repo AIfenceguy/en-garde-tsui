@@ -29,7 +29,7 @@ const label = (text, color, extra = {}) =>
     el('div', { class: 'label', style: { color: color || INK_MUTE, ...extra } }, [text]);
 
 const serif = (text, size = '26px', color = INK) => el('div', {
-    style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: size, lineHeight: '1.15', color }
+    style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '700', fontSize: size, lineHeight: '1.15', color }
 }, [text]);
 
 const num = (text, color = INK, size = '22px') =>
@@ -193,7 +193,7 @@ export async function mountInsight(root) {
         // Say plainly what the two numbers disagree on, if they do.
         if (f && offBand && formBand && (offBand.finish_lo !== formBand.finish_lo)) {
             const better = f.form_strength > official ? 'better' : 'worse';
-            card.appendChild(el('div', { style: { color: better === 'better' ? GOOD : WARN, fontSize: '13px', marginTop: '8px', fontWeight: '600' } }, [
+            card.appendChild(el('div', { style: { color: better === 'better' ? GOOD : WARN, fontSize: '13px', marginTop: '8px', fontWeight: '700' } }, [
                 `Recent ${catLabel(e.category)} form points ${better} than the seeding does.`
             ]));
         }

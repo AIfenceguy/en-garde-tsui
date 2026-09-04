@@ -82,7 +82,20 @@ export async function renderGroupLessonsTab(container) {
 
     function openForm(editing) {
         formMount.innerHTML = '';
-        const form = el('form', { class: 'card', onsubmit: async (e) => { e.preventDefault(); await save(); } });
+        const form = el('form', { class: 'card', onsubmit: async (e) => {
+            e.preventDefault();
+            // Ignore re-entry while a save is in flight: a double-tap or a
+            // stuck key produced four identical bouts in under a second.
+            if (form.dataset.saving === '1') return;
+            form.dataset.saving = '1';
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+            try { await save(); }
+            finally {
+                delete form.dataset.saving;
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        } });
         formMount.appendChild(form);
 
         // The form mounts above the list. Editing an entry further down the page

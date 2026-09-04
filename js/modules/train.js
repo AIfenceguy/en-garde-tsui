@@ -128,7 +128,7 @@ export async function mountTrain(root) {
             el('div', { class: 'label', style: { color: meta.color } }, ['Work on this first']),
             el('div', {
                 style: {
-                    fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: '30px',
+                    fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '700', fontSize: '30px',
                     lineHeight: '1.1', color: INK, margin: '8px 0 10px'
                 }
             }, [pretty(top.skill_slug)]),
@@ -173,7 +173,7 @@ export async function mountTrain(root) {
                     style: { color: change > 0 ? GOOD : BAD, fontSize: '12px' }
                   }, [change > 0 ? `+${change}` : String(change)])
                 : null,
-            el('span', { class: 'label', style: { color: meta.color } }, [meta.label])
+            el('span', { class: 'label', style: { color: meta.color, fontWeight: (STATUS[s.status]?.rank ?? 9) <= 3 ? '700' : '500' } }, [meta.label])
         ]);
 
         detail.appendChild(el('div', { class: 'label', style: { color: INK_MUTE, marginBottom: '10px' } }, [
@@ -204,7 +204,7 @@ export async function mountTrain(root) {
                 ]),
                 el('div', {
                     style: {
-                        fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: '21px',
+                        fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '700', fontSize: '21px',
                         lineHeight: '1.2', color: INK, margin: '8px 0 12px'
                     }
                 }, [d.title]),

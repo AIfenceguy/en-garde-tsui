@@ -15,6 +15,16 @@ import { getWeaknessDrills } from '../lib/weakness-drills.js';
 // The drill data carries emoji in its labels. Strip them at render time so the
 // screen matches the rest of the site; the data is left as it is.
 const noEmoji = (t) => String(t ?? '').replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').replace(/^\s+/, '');
+
+// The drill data shouts: SECOND-INTENTION FAKE, COUNTER-ATTACKERS. All-caps in
+// a serif italic reads thin and hard to scan; sentence case reads as a title.
+// Only applied when the source is entirely upper case, so mixed-case names
+// pass through untouched.
+const titleCase = (t) => {
+    const s = String(t ?? '').trim();
+    if (!s || s !== s.toUpperCase()) return s;
+    return s.toLowerCase().replace(/(^|[\s(])([a-z])/g, (m, pre, ch) => pre + ch.toUpperCase());
+};
 import { STAGES, RATINGS, computeStage, listDrillSessions, logDrillSession, tagToSlug } from '../lib/drill-mastery.js';
 
 const CATEGORIES = [
@@ -432,7 +442,7 @@ export async function mountPhysical(root) {
         for (const w of weaknesses) {
             const card = el('article', { class: 'weak-card', 'data-slug': w.slug }, [
                 el('header', { class: 'weak-card-head' }, [
-                    el('span', { class: 'weak-card-title' }, [noEmoji(w.label)]),
+                    el('span', { class: 'weak-card-title' }, [titleCase(noEmoji(w.label))]),
                     el('span', { class: 'weak-card-record', 'data-role': 'record' }, ['—'])
                 ]),
                 el('p', { class: 'weak-card-why' }, [w.why_it_hurts]),
@@ -535,7 +545,7 @@ export async function mountPhysical(root) {
                 const drillSlug = tagToSlug(p.tag);
                 return el('div', { class: `weak-play weak-play-p${p.priority || 3}`, 'data-drill-slug': drillSlug, 'data-weakness-slug': w.slug }, [
                     el('div', { class: 'weak-play-head' }, [
-                        el('span', { class: 'weak-play-tag' }, [noEmoji(p.tag)]),
+                        el('span', { class: 'weak-play-tag' }, [titleCase(noEmoji(p.tag))]),
                         // Mastery badge — populated async in buildWeaknessPanel
                         el('span', { class: 'mastery-badge', 'data-mastery-slug': drillSlug }, ['New']),
                         p.add_drill ? el('span', { class: 'weak-dose-pill', 'data-dose-slug': p.add_drill }, ['—']) : null

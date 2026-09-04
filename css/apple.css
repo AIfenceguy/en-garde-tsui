@@ -1110,3 +1110,27 @@ h1, h2, h3, h4, h5, h6,
 .coach-next { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .coach-next .label { color: #6B7280; }
 .coach-next-text { font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.4; color: var(--ink); }
+
+
+/* =====================================================================
+   Bold pass. Serif italic titles at weight 500 read thin, and worse in
+   all-caps; every title the site sets in serif italic is now 700. States
+   that need attention - behind, declining, stalled, needs detail - are
+   bold too, so they can be found at a glance.
+   ===================================================================== */
+.page-eyebrow,
+.weak-card-title, .weak-play-tag, .weak-sub,
+.nat-row-name,
+.coach-block-title, .coach-tip-title, .coach-drill-name, .coach-next-text,
+.level-name, .avatar-tile.avatar-initial,
+.empty-line {
+    font-weight: 700 !important;
+}
+.ability-pace.is-close, .ability-pace.is-behind,
+.coach-line.is-bad,
+.weak-card-record.weak-urgent, .weak-dose-cold,
+.badge-stamp.is-earned {
+    font-weight: 700 !important;
+}
+/* Detail-page chips: gold-on-beige failed contrast; ink on the surface. */
+.chip.is-on { color: var(--ink) !important; }

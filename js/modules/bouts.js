@@ -99,7 +99,7 @@ function boutCard(b) {
     // A quick-logged bout has a score and nothing else. Mark it so the promise
     // the quick form makes - score now, detail later - has somewhere to land.
     if (!acts.length && !b.reflection && !b.opponent_name) {
-        meta.push(el('span', { style: { color: '#B45309' } }, ['NEEDS DETAIL']));
+        meta.push(el('span', { style: { color: '#B45309', fontWeight: '700' } }, ['NEEDS DETAIL']));
     }
 
     return el('a', {
@@ -153,7 +153,20 @@ export async function mountBoutEntry(root, params) {
     ]));
 
     const form = el('form', {
-        onsubmit: async (e) => { e.preventDefault(); await save(); },
+        onsubmit: async (e) => {
+            e.preventDefault();
+            // Ignore re-entry while a save is in flight: a double-tap or a
+            // stuck key produced four identical bouts in under a second.
+            if (form.dataset.saving === '1') return;
+            form.dataset.saving = '1';
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+            try { await save(); }
+            finally {
+                delete form.dataset.saving;
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        },
         style: { padding: '0 var(--gut)' }
     });
     root.appendChild(form);
@@ -467,6 +480,14 @@ export async function mountBoutDetail(root, params) {
         root.appendChild(el('div', { class: 'card', style: { color: 'var(--loss)', margin: '24px var(--gut)' } }, ['Bout not found.']));
         return;
     }
+    // getBout fetches by id alone and both boys share one login, so a bout
+    // URL opened under the wrong profile rendered the other boy's bout beneath
+    // this one's name. Send it back to the list instead.
+    const me = activeProfile();
+    if (me && b.profile_id && b.profile_id !== me.id) {
+        toast('That bout belongs to another profile');
+        return go('bouts');
+    }
 
     const taxos = await loadTaxonomies();
     const my = b.my_score ?? 0;
@@ -509,23 +530,38 @@ export async function mountBoutDetail(root, params) {
     ]));
 
     // Scoring tally
-    root.appendChild(el('div', { class: 'label-row' }, [el('span', { class: 'label' }, ['How I scored'])]));
+    root.appendChild(el('div', { class: 'label-row' }, [el('span', { class: 'label' }, [`How ${me?.name || 'I'} scored`])]));
     if (b.scoring_actions?.length) {
-        root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut)' } }, b.scoring_actions.map((a) =>
-            el('span', { class: 'chip is-on' }, [
+        root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut)' } }, b.scoring_actions.map((a) => {
+            // Words, as on the form: "3/4" did not say which number was which.
+            const missed = Math.max(0, (a.attempts || 0) - (a.successes || 0));
+            return el('span', { class: 'chip is-on', style: { color: 'var(--ink)' } }, [
                 taxos.tacticBySlug.get(a.tactic_slug)?.label || a.tactic_slug,
-                el('span', { style: { marginLeft: '8px', opacity: '0.7' } }, [`${a.successes}/${a.attempts}`])
-            ])
-        )));
+                el('span', { class: 'num', style: { marginLeft: '8px', color: '#6B7280' } }, [
+                    `${a.successes || 0} scored${missed ? ` · ${missed} missed` : ''}`
+                ])
+            ]);
+        })));
     } else {
         root.appendChild(el('p', { class: 'empty-line', style: { padding: '0 var(--gut)', fontSize: '15px' } }, ['No tactics tallied.']));
     }
 
     // Failure patterns
-    root.appendChild(el('div', { class: 'label-row', style: { marginTop: '24px' } }, [el('span', { class: 'label' }, ['How they scored'])]));
-    if (b.failure_patterns?.length) {
+    root.appendChild(el('div', { class: 'label-row', style: { marginTop: '24px' } }, [el('span', { class: 'label' }, ['How the opponent scored'])]));
+    // conceded_actions carries the counts the form now records; failure_patterns
+    // is the older flat list, kept as the fallback for bouts logged before counts.
+    if (b.conceded_actions?.length) {
+        root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut)' } }, b.conceded_actions.map((c) =>
+            el('span', { class: 'chip is-on', style: { color: 'var(--ink)' } }, [
+                taxos.tacticBySlug.get(c.tactic_slug)?.label || c.tactic_slug,
+                el('span', { class: 'num', style: { marginLeft: '8px', color: '#6B7280' } }, [
+                    `${Number(c.touches) || 0} touch${Number(c.touches) === 1 ? '' : 'es'}`
+                ])
+            ])
+        )));
+    } else if (b.failure_patterns?.length) {
         root.appendChild(el('div', { class: 'chip-row', style: { padding: '0 var(--gut)' } }, b.failure_patterns.map((s) =>
-            el('span', { class: 'tag tag-weakness' }, [taxos.tacticBySlug.get(s)?.label || s])
+            el('span', { class: 'tag tag-weakness', style: { color: 'var(--ink)' } }, [taxos.tacticBySlug.get(s)?.label || s])
         )));
     } else {
         root.appendChild(el('p', { class: 'empty-line', style: { padding: '0 var(--gut)', fontSize: '15px' } }, ['Nothing logged.']));
