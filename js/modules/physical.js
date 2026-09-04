@@ -29,6 +29,7 @@ import { STAGES, RATINGS, computeStage, listDrillSessions, logDrillSession, tagT
 
 const CATEGORIES = [
     { slug: 'explosive',    label: 'Explosive' },
+    { slug: 'plyometric',   label: 'Plyometric' },
     { slug: 'strength',     label: 'Strength' },
     { slug: 'conditioning', label: 'Conditioning' },
     { slug: 'mobility',     label: 'Mobility' },
