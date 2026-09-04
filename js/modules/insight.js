@@ -203,9 +203,15 @@ export async function mountInsight(root) {
     // --- How fencers actually climb -----------------------------------------
     // The rules a new fencing parent is never told, each with the evidence it
     // came from. Rules tagged for the unrated apply to Kaylan; the rest to both.
-    const rules = (rulesRes.data || []).filter((r) =>
-        r.applies_to === 'everyone' || (r.applies_to === 'unrated' && !profile.rating) || r.applies_to === String(profile.rating || '').toLowerCase()
-    );
+    // Unrated is stored as 'U', a truthy string - so !profile.rating was false
+    // and Kaylan would never have seen the one rule written about his own
+    // results. Case-insensitive, as every string comparison here should be.
+    const ratingKey = String(profile.rating || '').trim().toLowerCase();
+    const isUnrated = ratingKey === '' || ratingKey === 'u';
+    const rules = (rulesRes.data || []).filter((r) => {
+        const a = String(r.applies_to || '').toLowerCase();
+        return a === 'everyone' || (a === 'unrated' && isUnrated) || a === ratingKey;
+    });
     const cases = casesRes.data || [];
     if (rules.length || cases.length) {
         body.appendChild(label('How fencers actually climb', INK_MUTE, { margin: '18px var(--gut) 6px' }));
