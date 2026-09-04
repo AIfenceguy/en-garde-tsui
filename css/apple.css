@@ -751,3 +751,214 @@ h1, h2, h3, h4, h5, h6,
     font-family: var(--sans) !important;
     font-weight: 400 !important;
 }
+
+
+/* =====================================================================
+   Weakness drills (#physical) and national roster (#opponents): brought
+   onto the house system. The originals shipped with their own palette -
+   #2B6BFF blue, #E63946 red, #8B5CF6 purple, gradients, drop shadows,
+   dashed rules, emoji - and read as pasted in from a different product.
+   Serif italic for names and titles, mono at wide tracking for every
+   label, ink and rule tokens for everything else.
+   ===================================================================== */
+.weak-panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 1px solid var(--rule);
+    border-radius: var(--r-card);
+    box-shadow: none;
+    padding: 18px;
+}
+.weak-eyebrow {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #6B7280;
+}
+.weak-sub {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 17px;
+    color: var(--ink);
+}
+.weak-card {
+    background: transparent;
+    border: none;
+    border-top: 1px solid var(--rule);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 16px 0 6px;
+    margin: 0;
+}
+.weak-card:first-of-type { border-top: none; padding-top: 4px; }
+.weak-card-emoji { display: none; }
+.weak-card-title {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 24px;
+    letter-spacing: 0;
+    color: var(--ink);
+}
+.weak-card-record,
+.weak-card-record.weak-urgent,
+.weak-card-record.weak-empty {
+    background: transparent;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--r-pill);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6B7280;
+}
+.weak-card-record.weak-urgent { color: #9b2230; border-color: #9b2230; }
+.weak-card-why {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 16px;
+    line-height: 1.45;
+    color: #6B7280;
+    margin: 6px 0 14px;
+}
+.weak-section { border-top: 1px solid var(--rule); margin-top: 14px; padding-top: 12px; }
+.weak-section:first-of-type { border-top: none; }
+.weak-section-label {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #6B7280;
+    margin-bottom: 10px;
+}
+.weak-play,
+.weak-play-p1, .weak-play-p2, .weak-play-p3 {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 1px solid var(--rule);
+    border-radius: var(--r-card);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.weak-play-p1 { border-left: 3px solid var(--gold); }
+.weak-play-tag {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 20px;
+    color: var(--ink);
+}
+.mastery-badge,
+.weak-dose-pill,
+.weak-dose-cold, .weak-dose-warm, .weak-dose-hot {
+    background: transparent !important;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--r-pill);
+    font-family: var(--mono);
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase;
+    color: #6B7280 !important;
+    padding: 2px 9px !important;
+}
+.weak-dose-hot { color: #1f7a1f !important; border-color: #1f7a1f; }
+.weak-dose-cold { color: #9b2230 !important; border-color: #9b2230; }
+.weak-play-data {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: #6B7280;
+    margin: 6px 0 10px;
+}
+.weak-play-row { border-top: 1px solid var(--rule); margin-top: 10px; padding-top: 10px; }
+.weak-play-row:first-of-type { border-top: none; }
+.weak-play-label,
+.weak-play-cue .weak-play-label {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #6B7280;
+    margin-bottom: 4px;
+}
+.weak-play-text {
+    font-family: var(--sans);
+    font-size: 14.5px;
+    line-height: 1.55;
+    color: var(--ink);
+}
+.weak-play-cue .weak-play-text {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 17px;
+    line-height: 1.4;
+}
+.weak-play-actions { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+.weak-link-btn,
+.weak-add-btn,
+.weak-add-btn:disabled {
+    background: transparent !important;
+    border: none;
+    padding: 4px 0;
+    margin: 0;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--cta, #0071e3) !important;
+    border-radius: 0;
+}
+.weak-add-btn:disabled { color: #6B7280 !important; cursor: default; }
+
+/* National roster rows */
+.nat-row {
+    background: transparent;
+    border: none;
+    border-top: 1px solid var(--rule);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 14px var(--gut);
+}
+.nat-row:hover { background: rgba(29,29,31,0.03); }
+.nat-row-rank {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: #6B7280;
+    min-width: 44px;
+}
+.nat-row-name {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 21px;
+    line-height: 1.1;
+    color: var(--ink);
+}
+.nat-row-club {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6B7280;
+    margin-top: 4px;
+}
+.nat-row-headline {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-top: 6px;
+}
+.nat-row-tag, .nat-row-arrow { color: #6B7280; font-family: var(--mono); }

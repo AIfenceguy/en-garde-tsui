@@ -11,6 +11,10 @@ import {
 import { safeWrite } from '../lib/offline.js';
 import { scaleSlider } from '../lib/chips.js';
 import { getWeaknessDrills } from '../lib/weakness-drills.js';
+
+// The drill data carries emoji in its labels. Strip them at render time so the
+// screen matches the rest of the site; the data is left as it is.
+const noEmoji = (t) => String(t ?? '').replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').replace(/^\s+/, '');
 import { STAGES, RATINGS, computeStage, listDrillSessions, logDrillSession, tagToSlug } from '../lib/drill-mastery.js';
 
 const CATEGORIES = [
@@ -199,7 +203,7 @@ export async function mountPhysical(root) {
                     }
                     renderSession();
                 }
-            }, [d.done ? '✓' : '']),
+            }, [d.done ? '' : '']),
             el('div', { style: { flex: '1 1 auto', minWidth: 0 } }, [
                 el('div', { style: { fontWeight: 500, fontSize: '15px' } }, [d.label]),
                 el('div', {
@@ -421,15 +425,14 @@ export async function mountPhysical(root) {
     function buildWeaknessPanel(profile, weaknesses) {
         const panel = el('section', { class: 'weak-panel', style: { margin: '0 var(--gut) 18px' } });
         panel.appendChild(el('div', { class: 'weak-head' }, [
-            el('span', { class: 'weak-eyebrow' }, ['🎯 WEAK-SPOT TRAINING']),
+            el('span', { class: 'weak-eyebrow' }, ['WEAK-SPOT TRAINING']),
             el('span', { class: 'weak-sub' }, [`Drills tuned to what beats ${profile.name.split(' ')[0]}.`])
         ]));
 
         for (const w of weaknesses) {
             const card = el('article', { class: 'weak-card', 'data-slug': w.slug }, [
                 el('header', { class: 'weak-card-head' }, [
-                    el('span', { class: 'weak-card-emoji' }, [w.emoji]),
-                    el('span', { class: 'weak-card-title' }, [w.label]),
+                    el('span', { class: 'weak-card-title' }, [noEmoji(w.label)]),
                     el('span', { class: 'weak-card-record', 'data-role': 'record' }, ['—'])
                 ]),
                 el('p', { class: 'weak-card-why' }, [w.why_it_hurts]),
@@ -497,7 +500,7 @@ export async function mountPhysical(root) {
                         });
                         renderSession();
                         toast(`Added ${lib.label} to today`);
-                        btn.textContent = '✓ Added';
+                        btn.textContent = 'Added';
                         btn.disabled = true;
                     });
                 });
@@ -532,9 +535,9 @@ export async function mountPhysical(root) {
                 const drillSlug = tagToSlug(p.tag);
                 return el('div', { class: `weak-play weak-play-p${p.priority || 3}`, 'data-drill-slug': drillSlug, 'data-weakness-slug': w.slug }, [
                     el('div', { class: 'weak-play-head' }, [
-                        el('span', { class: 'weak-play-tag' }, [p.tag]),
+                        el('span', { class: 'weak-play-tag' }, [noEmoji(p.tag)]),
                         // Mastery badge — populated async in buildWeaknessPanel
-                        el('span', { class: 'mastery-badge', 'data-mastery-slug': drillSlug, style: 'display:inline-block;margin-left:8px;padding:1px 7px;font-family:var(--eg-mono,monospace);font-size:10px;font-weight:700;letter-spacing:0.06em;background:rgba(107,114,128,0.12);color:#6B7280;border-radius:999px;' }, ['🌱 NEW']),
+                        el('span', { class: 'mastery-badge', 'data-mastery-slug': drillSlug }, ['New']),
                         p.add_drill ? el('span', { class: 'weak-dose-pill', 'data-dose-slug': p.add_drill }, ['—']) : null
                     ].filter(Boolean)),
                     p.data ? el('div', { class: 'weak-play-data' }, [p.data]) : null,
@@ -546,10 +549,10 @@ export async function mountPhysical(root) {
                         el('span', { class: 'weak-play-label' }, [kind === 'body' ? 'CUE' : 'IN-LESSON CUE']),
                         el('p', { class: 'weak-play-text' }, [p.cue])
                     ]),
-                    el('div', { style: 'display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;' }, [
+                    el('div', { class: 'weak-play-actions' }, [
                         el('button', {
                             type: 'button',
-                            style: 'background:transparent;border:1px solid rgba(43,107,255,0.3);padding:4px 12px;cursor:pointer;font-family:var(--eg-mono,monospace);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#2B6BFF;border-radius:6px;',
+                            class: 'weak-link-btn',
                             onclick: () => openLogModal(p, w, drillSlug)
                         }, ['+ Log a rep']),
                         p.add_drill ? el('button', {

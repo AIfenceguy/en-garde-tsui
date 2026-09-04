@@ -16,6 +16,10 @@ import {
     priorityFor, flatPriorityOpponents,
     STYLE_QUESTIONS, SHARED_PATTERNS, PRIORITY_META
 } from '../lib/priority-targets.js';
+
+// The drill data carries emoji in its labels. Strip them at render time so the
+// screen matches the rest of the site; the data is left as it is.
+const noEmoji = (t) => String(t ?? '').replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').replace(/^\s+/, '');
 import { opponentProfiler, listCoachNotes } from '../lib/coach.js';
 
 const ARCHETYPES = [
@@ -180,10 +184,10 @@ function buildRosterRow(r, rankKey, existingOpps) {
         el('div', { class: 'nat-row-body' }, [
             el('div', { class: 'nat-row-name' }, [r.name]),
             el('div', { class: 'nat-row-club' }, [r.club || '—']),
-            headline ? el('div', { class: 'nat-row-headline' }, [headline]) : null
+            headline ? el('div', { class: 'nat-row-headline' }, [noEmoji(headline)]) : null
         ].filter(Boolean)),
         existing
-            ? el('span', { class: 'nat-row-tag', title: 'Already scouted' }, ['✓'])
+            ? el('span', { class: 'nat-row-tag', title: 'Already scouted' }, [''])
             : null,
         el('span', { class: 'nat-row-arrow' }, ['↗'])
     ].filter(Boolean));
@@ -256,7 +260,7 @@ export async function mountOpponentDetail(root, params) {
                     toast(next ? 'Marked as priority target' : 'Removed priority flag');
                 } catch (e) { toast('Save failed: ' + e.message, 'error'); }
             }
-        }, [isPri ? '★ Priority target' : '☆ Mark as priority target']));
+        }, [isPri ? 'Priority target' : 'Mark as priority target']));
         if (opp.tracker_url) {
             priorityToggleRow.appendChild(el('a', {
                 href: opp.tracker_url, target: '_blank', rel: 'noopener',
@@ -674,7 +678,7 @@ function clubRow(c) {
             el('div', { style: { fontFamily: 'var(--mono, ui-monospace, monospace)', fontVariantNumeric: 'tabular-nums', fontSize: '14px' } },
                 [`${c.w}–${c.l}`])
         ]),
-        c.tag ? el('div', { class: 'kicker', style: { marginTop: '4px', fontSize: '12px', color: 'var(--ink-mute, #aaa)' } }, [c.tag]) : null,
+        c.tag ? el('div', { class: 'kicker', style: { marginTop: '4px', fontSize: '12px', color: 'var(--ink-mute, #aaa)' } }, [noEmoji(c.tag)]) : null,
         c.notable_fencers?.length
             ? el('div', { style: { marginTop: '6px', fontSize: '12px', color: 'var(--ink-soft, #999)' } },
                 [c.notable_fencers.join(' · ')])
@@ -889,7 +893,7 @@ async function buildFtIntelPanel(opp) {
     const plays = [...(intel.plays || [])].sort((a,b) => (a.priority||99) - (b.priority||99));
     const playsHtml = plays.map(p => `
         <article class="ft-play-card ft-play-p${p.priority || 3}">
-            <header class="ft-play-tag">${p.tag || ''}</header>
+            <header class="ft-play-tag">${noEmoji(p.tag)}</header>
             ${p.data ? `<div class="ft-play-data">${p.data}</div>` : ''}
             ${p.game_plan ? `
                 <div class="ft-play-row">
