@@ -218,7 +218,7 @@ export function generateCoachTips(data) {
     const reminders = [];
     if (noReflLosses > 0) reminders.push(`${noReflLosses} loss(es) have no reflection logged. Fill them in: +10 Mind XP each, and better diagnoses next time.`);
     if (bouts.length === 0) reminders.push('Log your first practice bout this week — even informal touches count. Strike XP starts the moment a bout is logged.');
-    if ((data.opponent_swots || []).length === 0 && bouts.length > 0) reminders.push('You\'ve fenced opponents but profiled 0 of them. Add 4 SWOT chips per opponent = +20 MIND XP each. That\'s easy levels.');
+    if ((data.opponent_swots || []).length === 0 && bouts.length > 0) reminders.push('You\'ve fenced opponents but profiled 0 of them. Add 4 SWOT chips per opponent = +20 MIND XP each. Each one is quick to do.');
 
     // Weekly XP forecast if they follow the plan
     let weeklyXp = 0;
