@@ -62,7 +62,7 @@ function describe(best: Offer): Omit<Seen, "fits"> {
 }
 
 Deno.serve(async (req) => {
-  const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-cron-secret" };
+  const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret" };
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
