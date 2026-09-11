@@ -99,9 +99,13 @@ export async function mountTravel(root) {
 
     const [{ data, error }, tripsRes] = await Promise.all([
         supa.from('flight_watches')
-            .select('*, flight_prices(price, currency, airline, booking_url, stops, origin, observed_at, searched_depart_date, searched_return_date, depart_at, arrive_at, ret_depart_at, ret_arrive_at, duration_minutes, flight_numbers, layovers, max_layover_minutes)')
+            .select('*, flight_prices(leg, price, currency, airline, booking_url, stops, origin, observed_at, searched_depart_date, searched_return_date, depart_at, arrive_at, ret_depart_at, ret_arrive_at, duration_minutes, flight_numbers, layovers, max_layover_minutes), flight_offers(leg, origin, destination, depart_date, rank, price_per_person, airline, flight_numbers, depart_at, arrive_at, stops, duration_minutes, layovers, max_layover_minutes, fits, booking_url, observed_at)')
             .is('deleted_at', null)
-            .order('depart_date'),
+            .order('depart_date')
+            // Every itinerary the last few checks saw, newest first; the card
+            // keeps the latest day's batch per leg.
+            .order('observed_at', { foreignTable: 'flight_offers', ascending: false })
+            .limit(240, { foreignTable: 'flight_offers' }),
         // What the trip is actually for: the competitions, and the travel
         // constraints derived from their schedule.
         supa.from('trip_overview').select('*').order('event_date')
@@ -143,9 +147,11 @@ export async function mountTravel(root) {
     }
 
     function watchCard(w) {
-        const prices = (w.flight_prices || [])
-            .slice()
-            .sort((a, b) => new Date(a.observed_at) - new Date(b.observed_at));
+        // Outbound fares drive the headline, the history and the alerts; the
+        // return leg, when it is watched, is priced on its own below.
+        const allPrices = (w.flight_prices || []).slice().sort((a, b) => new Date(a.observed_at) - new Date(b.observed_at));
+        const prices = allPrices.filter((p) => !p.leg || p.leg === 'out' || p.leg === 'rt');
+        const retPrices = allPrices.filter((p) => p.leg === 'ret');
 
         // A single check writes one row per airport, all sharing a timestamp,
         // so "the last row" is arbitrary and was showing the most expensive
@@ -388,14 +394,97 @@ export async function mountTravel(root) {
                 stopText, airline: latest.airline, flightNumbers: latest.flight_numbers
             }));
 
+            // The return leg is priced on its own (one way back), when watched.
+            const latestRet = retPrices.length ? retPrices[retPrices.length - 1] : null;
             if (isRoundTrip && latest.ret_depart_at) {
                 card.appendChild(legBlock('Return', w.destination, latest.origin, latest.ret_depart_at, latest.ret_arrive_at, {
                     fromHome: false, layovers: [], maxLayover: 0, stopText, airline: latest.airline
                 }));
+            } else if (latestRet) {
+                const rs = typeof latestRet.stops === 'number' ? (latestRet.stops === 0 ? 'nonstop' : `${latestRet.stops} stop${latestRet.stops === 1 ? '' : 's'}`) : null;
+                const retSeen = new Date(latestRet.observed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                card.appendChild(el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginTop: '12px' } }, [
+                    el('span', { style: { color: INK, fontSize: '22px', fontWeight: '700', fontFamily: 'var(--mono)' } }, [money(Number(latestRet.price) / pax)]),
+                    el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [`per person ${MID} return ${MID} ${w.destination} ${ARROW} ${latestRet.origin || originList[0]} ${MID} ${fmtDate(latestRet.searched_depart_date)} ${MID} checked ${retSeen}`])
+                ]));
+                card.appendChild(legBlock('Return', w.destination, latestRet.origin, latestRet.depart_at, latestRet.arrive_at, {
+                    fromHome: false, layovers: Array.isArray(latestRet.layovers) ? latestRet.layovers : [], durationMinutes: latestRet.duration_minutes,
+                    maxLayover: Number(latestRet.max_layover_minutes) || 0, stopText: rs, airline: latestRet.airline, flightNumbers: latestRet.flight_numbers
+                }));
+                const paidRet = Number(w.booked_ret_cash) || 0;
+                if (paidRet > 0) {
+                    const d = paidRet - Number(latestRet.price) / pax;
+                    card.appendChild(el('div', { style: { color: d > 0 ? GOOD : INK, fontSize: '13px', marginTop: '6px' } }, [
+                        d > 0 ? `You booked the return at ${money(paidRet)} per person. Today is ${money(d)} cheaper.` : `You booked the return at ${money(paidRet)} per person. Today is not cheaper.`
+                    ]));
+                }
             } else if (!isRoundTrip) {
                 card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '10px' } }, [
-                    `Return not priced ${EMD} it was booked with points, so there is nothing to rebook.`
+                    w.watch_return === false
+                        ? `Return not watched ${EMD} switch it on under Edit to price it.`
+                        : `Return not priced yet ${EMD} the next check prices it one way, ${w.destination} back home.`
                 ]));
+            }
+
+            // The real choices from the latest check: every itinerary seen for
+            // each leg, the ones that fit the family's stops and hours first,
+            // the rest in grey. Each line opens the same search on Google Flights.
+            const offers = w.flight_offers || [];
+            const offerDay = (o) => String(o.observed_at).slice(0, 10);
+            const legOffers = (leg) => {
+                const rows = offers.filter((o) => o.leg === leg);
+                if (!rows.length) return [];
+                const day = rows.map(offerDay).sort().pop();
+                return rows.filter((o) => offerDay(o) === day)
+                    .sort((a, b) => (Number(b.fits !== false) - Number(a.fits !== false)) || (Number(a.price_per_person) - Number(b.price_per_person)));
+            };
+            const optionRow = (o) => {
+                const dep = parseLocal(o.depart_at), arr = parseLocal(o.arrive_at);
+                const ok = o.fits !== false;
+                const stopsText = typeof o.stops === 'number' ? (o.stops === 0 ? 'nonstop' : `${o.stops} stop${o.stops === 1 ? '' : 's'}${o.max_layover_minutes ? `, ${hm(Number(o.max_layover_minutes))} layover` : ''}`) : null;
+                return el('a', {
+                    href: o.booking_url || '#', target: '_blank', rel: 'noopener',
+                    style: { display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: '10px', alignItems: 'baseline', padding: '7px 0', borderTop: '1px solid var(--rule)', textDecoration: 'none' }
+                }, [
+                    el('span', { style: { color: ok ? INK : INK_MUTE, fontFamily: 'var(--mono)', fontWeight: '700', fontSize: '15px' } }, [money(Number(o.price_per_person))]),
+                    el('span', { style: { color: ok ? INK : INK_MUTE, fontSize: '13px', lineHeight: '1.45' } }, [
+                        `${dep ? clock(dep) : '?'} ${ARROW} ${arr ? clock(arr) : '?'}${arr && dep && arr.getDate() !== dep.getDate() ? ' next day' : ''}`,
+                        el('br', {}),
+                        el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [
+                            [o.airline, o.flight_numbers, stopsText, o.duration_minutes ? hm(Number(o.duration_minutes)) : null, ok ? null : 'outside your preferences'].filter(Boolean).join(` ${MID} `)
+                        ])
+                    ]),
+                    el('span', { class: 'label', style: { color: INK_MUTE, textAlign: 'right' } }, [`${o.origin || ''} ${fmtDate(o.depart_date)}`.trim()])
+                ]);
+            };
+            const optionsBlock = (title, rows) => {
+                if (!rows.length) return null;
+                const wrap = el('div', { style: { marginTop: '14px' } });
+                wrap.appendChild(el('div', { class: 'kicker', style: { color: INK_MUTE } }, [title]));
+                const fitRows = rows.filter((o) => o.fits !== false);
+                const shown = (fitRows.length ? fitRows : rows).slice(0, 6);
+                for (const o of shown) wrap.appendChild(optionRow(o));
+                const rest = rows.filter((o) => !shown.includes(o));
+                if (rest.length) {
+                    const more = el('button', { type: 'button', style: linkBtn(INK_MUTE), onclick: () => { more.remove(); for (const o of rest) wrap.appendChild(optionRow(o)); } }, [`show ${rest.length} more`]);
+                    wrap.appendChild(more);
+                }
+                return wrap;
+            };
+            const prefBits = [
+                w.max_stops === 0 ? 'nonstop only' : w.max_stops === 1 ? 'up to one stop' : null,
+                w.preferred_depart_after ? `out after ${String(w.preferred_depart_after).slice(0, 5)}` : null,
+                w.depart_before ? `out before ${String(w.depart_before).slice(0, 5)}` : null,
+                w.return_after ? `back after ${String(w.return_after).slice(0, 5)}` : null,
+                w.return_before ? `back before ${String(w.return_before).slice(0, 5)}` : null
+            ].filter(Boolean);
+            const outOpts = legOffers('out'), retOpts = legOffers('ret');
+            if (outOpts.length || retOpts.length) {
+                card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '14px', lineHeight: '1.5' } }, [
+                    `Options from the latest check, per person, one seat${prefBits.length ? `. Your preferences: ${prefBits.join(', ')}` : ''}. Change them under Edit.`
+                ]));
+                card.appendChild(optionsBlock(`Fly out ${MID} ${originList.join('/')} ${ARROW} ${w.destination}`, outOpts));
+                card.appendChild(optionsBlock(`Return ${MID} ${w.destination} ${ARROW} home`, retOpts));
             }
 
             // Today against the history, in one sentence each.
@@ -841,10 +930,75 @@ export async function mountTravel(root) {
             ])
         ]));
 
-        const nonstop = el('input', { type: 'checkbox', checked: !!editing?.nonstop_only });
+        // --- Flight preferences: which itineraries count as acceptable ------
+        // Dates can be a window (a day early may beat the fare but costs a hotel
+        // night); hours are local take-off times; stops are a ceiling. The
+        // checker prices everything and marks what fits.
+        const t5 = (v) => (v ? String(v).slice(0, 5) : '');
+        const sectionLabel = (text) => el('div', {
+            class: 'label-row', style: { marginTop: '20px', paddingTop: '14px', borderTop: '1px solid rgba(0,0,0,0.08)' }
+        }, [el('span', { class: 'label', style: { color: INK } }, [text])]);
+        const pair = (aLabel, aNode, bLabel, bNode) => el('div', { class: 'row' }, [
+            el('div', { class: 'field' }, [el('label', { style: { color: INK_MUTE } }, [aLabel]), aNode]),
+            el('div', { class: 'field' }, [el('label', { style: { color: INK_MUTE } }, [bLabel]), bNode])
+        ]);
+        form.appendChild(sectionLabel('Flight preferences'));
+        const stopsSel = el('select', { name: 'max_stops', style: selectStyle }, [
+            el('option', { value: '', selected: editing?.max_stops == null && !editing?.nonstop_only, style: { color: INK } }, ['Any number of stops']),
+            el('option', { value: '1', selected: editing?.max_stops === 1, style: { color: INK } }, ['Up to one stop']),
+            el('option', { value: '0', selected: editing?.max_stops === 0 || (editing?.max_stops == null && !!editing?.nonstop_only), style: { color: INK } }, ['Nonstop only'])
+        ]);
+        form.appendChild(field('Stops', stopsSel, 'itineraries with more stops are still shown, in grey'));
+        form.appendChild(pair(
+            'Fly out, earliest', el('input', { type: 'date', name: 'depart_window_start', min: todayISO(), value: editing?.depart_window_start || '', style: inputStyle }),
+            'Fly out, latest', el('input', { type: 'date', name: 'depart_window_end', min: todayISO(), value: editing?.depart_window_end || '', style: inputStyle })
+        ));
+        form.appendChild(pair(
+            'Take off after', el('input', { type: 'time', name: 'depart_after', value: t5(editing?.preferred_depart_after), style: inputStyle }),
+            'Take off before', el('input', { type: 'time', name: 'depart_before', value: t5(editing?.depart_before), style: inputStyle })
+        ));
+        form.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '2px 0 0', lineHeight: '1.5' } }, [
+            'Leave the window blank to price the departure date only. A day early is priced with the extra hotel night added.'
+        ]));
+        const watchRet = el('input', { type: 'checkbox', checked: editing ? editing.watch_return !== false : true });
         form.appendChild(el('label', {
-            style: { display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginTop: '10px', color: INK }
-        }, [nonstop, el('span', { style: { color: INK } }, ['Nonstop only'])]));
+            style: { display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginTop: '14px', color: INK }
+        }, [watchRet, el('span', { style: { color: INK } }, ['Watch the return too, priced one way back home'])]));
+        form.appendChild(pair(
+            'Return, earliest', el('input', { type: 'date', name: 'return_window_start', min: todayISO(), value: editing?.return_window_start || '', style: inputStyle }),
+            'Return, latest', el('input', { type: 'date', name: 'return_window_end', min: todayISO(), value: editing?.return_window_end || '', style: inputStyle })
+        ));
+        form.appendChild(pair(
+            'Return after', el('input', { type: 'time', name: 'return_after', value: t5(editing?.return_after), style: inputStyle }),
+            'Return before', el('input', { type: 'time', name: 'return_before', value: t5(editing?.return_before), style: inputStyle })
+        ));
+        form.appendChild(pair(
+            'Hotel, per night ($)', el('input', { type: 'number', name: 'hotel_nightly_rate', min: 0, placeholder: '180', value: editing?.hotel_nightly_rate ?? '', style: inputStyle }),
+            'Cost of a flight outside your hours ($)', el('input', { type: 'number', name: 'early_depart_penalty', min: 0, placeholder: '75', value: editing?.early_depart_penalty ?? '', style: inputStyle })
+        ));
+
+        // --- What is already booked: the checker then watches for a rebook ---
+        form.appendChild(sectionLabel('Already booked'));
+        form.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '0 0 6px', lineHeight: '1.5' } }, [
+            'Fill in a leg once it is bought. The daily check then prices only that leg and says when it drops enough to rebook for a credit. Leave blank if not booked yet.'
+        ]));
+        const originSel = el('select', { name: 'booked_out_origin', style: selectStyle }, [
+            el('option', { value: '', style: { color: INK } }, ['airport']),
+            ...HOME_AIRPORTS.map((a) => el('option', { value: a.code, selected: editing?.booked_out_origin === a.code, style: { color: INK } }, [a.code]))
+        ]);
+        form.appendChild(pair(
+            'Outbound airline', el('input', { type: 'text', name: 'booked_out_carrier', placeholder: 'United', value: editing?.booked_out_carrier || '', style: inputStyle }),
+            'Outbound, $ per seat', el('input', { type: 'number', name: 'booked_out_cash', min: 0, value: editing?.booked_out_cash ?? '', style: inputStyle })
+        ));
+        form.appendChild(pair(
+            'Outbound date', el('input', { type: 'date', name: 'booked_out_date', value: editing?.booked_out_date || '', style: inputStyle }),
+            'Outbound from', originSel
+        ));
+        form.appendChild(pair(
+            'Return airline', el('input', { type: 'text', name: 'booked_ret_carrier', placeholder: 'points, or an airline', value: editing?.booked_ret_carrier || '', style: inputStyle }),
+            'Return, $ per seat', el('input', { type: 'number', name: 'booked_ret_cash', min: 0, placeholder: '0 if on points', value: editing?.booked_ret_cash ?? '', style: inputStyle })
+        ));
+        form.appendChild(field('Return date', el('input', { type: 'date', name: 'booked_ret_date', value: editing?.booked_ret_date || '', style: inputStyle })));
 
         form.appendChild(el('div', {
             class: 'label-row',
@@ -890,7 +1044,28 @@ export async function mountTravel(root) {
                 depart_date: fd.get('depart_date'),
                 return_date: fd.get('return_date') || null,
                 passengers: Number(fd.get('passengers')) || 1,
-                nonstop_only: !!nonstop.checked,
+                max_stops: stopsSel.value === '' ? null : Number(stopsSel.value),
+                nonstop_only: stopsSel.value === '0',
+                depart_window_start: fd.get('depart_window_start') || null,
+                depart_window_end: fd.get('depart_window_end') || null,
+                preferred_depart_after: fd.get('depart_after') || null,
+                depart_before: fd.get('depart_before') || null,
+                watch_return: !!watchRet.checked,
+                return_window_start: fd.get('return_window_start') || null,
+                return_window_end: fd.get('return_window_end') || null,
+                return_after: fd.get('return_after') || null,
+                return_before: fd.get('return_before') || null,
+                hotel_nightly_rate: fd.get('hotel_nightly_rate') !== '' ? Number(fd.get('hotel_nightly_rate')) : null,
+                early_depart_penalty: fd.get('early_depart_penalty') !== '' ? Number(fd.get('early_depart_penalty')) : null,
+                booked_out_carrier: txt('booked_out_carrier'),
+                booked_out_cash: fd.get('booked_out_cash') !== '' ? Number(fd.get('booked_out_cash')) : null,
+                booked_out_date: fd.get('booked_out_date') || null,
+                booked_out_origin: txt('booked_out_origin'),
+                booked_ret_carrier: txt('booked_ret_carrier'),
+                booked_ret_cash: fd.get('booked_ret_cash') !== '' ? Number(fd.get('booked_ret_cash')) : null,
+                booked_ret_date: fd.get('booked_ret_date') || null,
+                // A booking exists once an outbound seat price is on record.
+                booked_at: (fd.get('booked_out_cash') !== '' && fd.get('booked_out_cash') != null) ? (editing?.booked_at || new Date().toISOString()) : null,
                 target_price: fd.get('target_price') ? Number(fd.get('target_price')) : null,
                 alert_phone: (txt('alert_phone') || '').replace(/\D/g, '') || null,
                 carrier_gateway: txt('carrier_gateway'),

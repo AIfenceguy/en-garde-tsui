@@ -1,25 +1,30 @@
 // flight-check — price every active travel watch on Google Flights (through
-// SerpAPI), record what was found, and raise an alert when a fare hits the
-// target, sets a new low, or drops far enough below what was already paid to
-// be worth rebooking. A port of supabase-backups/flight-check.ps1 so it no
-// longer needs a PC to be awake at 7am.
+// SerpAPI), keep every itinerary seen, record the best one per leg, and raise
+// an alert when a fare hits the target, sets a new low, or drops far enough
+// below what was already paid to be worth rebooking. A port of
+// supabase-backups/flight-check.ps1 that no longer needs a PC awake at 7am.
+//
+// Each leg is priced as a one-way search: out (origin -> destination over the
+// departure window) and, when the watch says so, ret (destination -> origin
+// over the return window). A family's preferences decide which itineraries
+// "fit": how many stops, and the local hours the flight may take off. The
+// cheapest fitting itinerary is the day's fare; everything seen is kept in
+// flight_offers so the screen can show the real choices.
 //
 // Secrets (Supabase project settings -> Edge Functions -> Secrets):
 //   SERPAPI_KEY      required to price anything; without it the run is skipped.
 //   RESEND_API_KEY   optional; alerts go out through Resend (ALERT_FROM sets the sender).
 //   SMTP_USER/PASS   optional; Gmail app password, alerts go out through SMTP.
-// Alerts are always written to flight_alerts, sent or not, so the Travel
-// screen can show them.
+// Alerts are always written to flight_alerts, sent or not.
 //
 // Body: { watch_id?: uuid, full_sweep?: boolean, dry_run?: boolean }
-//   cron calls it daily with {}; Sundays widen to every airport; a parent's
-//   "Check now" passes the watch id; dry_run prices but never sends.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SERP = "https://serpapi.com/search";
 const DELAY_MS = 400;
 const MAX_SEARCHES_PER_RUN = 48;
+const OFFERS_KEPT = 8;
 const TZ = "America/Los_Angeles";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -28,10 +33,11 @@ const ptWeekday = (d = new Date()) => d.toLocaleDateString("en-US", { weekday: "
 const addDays = (iso: string, n: number) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const daysBetween = (a: string, b: string) => Math.round((new Date(a + "T00:00:00Z").getTime() - new Date(b + "T00:00:00Z").getTime()) / 86400000);
 const money = (n: number) => `$${Math.round(n)}`;
+const hhmm = (v: unknown) => { const s = String(v || ""); const m = /(\d{1,2}):(\d{2})/.exec(s.length > 10 ? s.slice(11) : s); return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null; };
 
-function expandDates(start: string | null, end: string | null, fallback: string | null): (string | null)[] {
+function expandDates(start: string | null, end: string | null, fallback: string | null): string[] {
   const s = start || fallback, e = end || fallback;
-  if (!s) return [null];
+  if (!s) return [];
   const out: string[] = [];
   for (let d = s; d <= (e || s); d = addDays(d, 1)) { out.push(d); if (out.length > 7) break; }
   return out;
@@ -39,6 +45,20 @@ function expandDates(start: string | null, end: string | null, fallback: string 
 
 // deno-lint-ignore no-explicit-any
 type Offer = any;
+type Seen = {
+  price: number; airline: string; flightNums: string; departAt: string | null; arriveAt: string | null; stops: number;
+  duration: number | null; layovers: Offer[] | null; maxLayover: number | null; fits: boolean; raw: Offer;
+};
+
+function describe(best: Offer): Omit<Seen, "fits"> {
+  const segs: Offer[] = best.flights || [];
+  const layovers = Array.isArray(best.layovers) && best.layovers.length ? best.layovers : null;
+  return {
+    price: Number(best.price), airline: segs[0]?.airline || "", flightNums: segs.map((s: Offer) => s.flight_number).filter(Boolean).join(","),
+    departAt: segs[0]?.departure_airport?.time || null, arriveAt: segs[segs.length - 1]?.arrival_airport?.time || null, stops: Math.max(0, segs.length - 1),
+    duration: best.total_duration ?? null, layovers, maxLayover: layovers ? Math.max(...layovers.map((l: Offer) => Number(l.duration) || 0)) : null, raw: best,
+  };
+}
 
 Deno.serve(async (req) => {
   const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-cron-secret" };
@@ -89,133 +109,161 @@ Deno.serve(async (req) => {
       report.push({ watch: w.label, deactivated: `departure ${w.depart_date} has passed` });
       continue;
     }
-
-    let departDates = expandDates(w.depart_window_start, w.depart_window_end, w.depart_date);
-    let returnDates = expandDates(w.return_window_start, w.return_window_end, w.return_date);
-    let originsToday: string[];
-    let mode: string;
-    if (w.booked_at && w.booked_out_origin && !fullSweep) {
-      // Booked: the only question left is whether the held leg dropped enough
-      // to rebook for a credit, so price that leg alone, in the shape bought.
-      originsToday = [String(w.booked_out_origin).toUpperCase()];
-      if (w.booked_out_date) departDates = [w.booked_out_date];
-      returnDates = (w.booked_ret_cash && w.booked_ret_date) ? [w.booked_ret_date] : [null];
-      mode = "booked leg";
-    } else {
-      originsToday = (sundaySweep || !w.preferred_origin) ? origins : [String(w.preferred_origin).toUpperCase()];
-      mode = sundaySweep ? "full sweep" : "daily check";
-    }
+    const dest = String(w.destination).toUpperCase();
     const pax = Math.max(1, Number(w.passengers) || 1);
-    const baselineDepart = [...departDates].filter(Boolean).sort().pop() as string | null;
+    const maxStops: number | null = w.max_stops != null ? Number(w.max_stops) : (w.nonstop_only ? 0 : null);
+    const prefs = {
+      out: { after: hhmm(w.preferred_depart_after), before: hhmm(w.depart_before) },
+      ret: { after: hhmm(w.return_after), before: hhmm(w.return_before) },
+    };
     const hotelRate = Number(w.hotel_nightly_rate) || 0;
     const earlyPen = Number(w.early_depart_penalty) || 0;
-    const afterTime = w.preferred_depart_after ? String(w.preferred_depart_after).slice(0, 5) : null;
     const penalties = (w.origin_penalties && typeof w.origin_penalties === "object") ? w.origin_penalties : {};
 
-    type Found = { origin: string; price: number; effective: number; airline: string; stops: number; url: string; departDate: string; returnDate: string | null; departAt: string; extraNights: number };
+    // ---- what to search ---------------------------------------------------
+    let departDates = expandDates(w.depart_window_start, w.depart_window_end, w.depart_date);
+    let returnDates = expandDates(w.return_window_start, w.return_window_end, w.return_date);
+    let originsOut: string[], originsRet: string[], mode: string;
+    if (w.booked_at && w.booked_out_origin && !fullSweep) {
+      // Booked: watch the held outbound leg for a rebook drop, and the return
+      // only if it is watched (a return bought for cash, or one still open).
+      originsOut = [String(w.booked_out_origin).toUpperCase()];
+      if (w.booked_out_date) departDates = [w.booked_out_date];
+      if (w.booked_ret_cash && w.booked_ret_date) { returnDates = [w.booked_ret_date]; originsRet = [String(w.booked_ret_origin || w.booked_out_origin).toUpperCase()]; }
+      else if (w.watch_return !== false) originsRet = [String(w.booked_ret_origin || w.booked_out_origin).toUpperCase()];
+      else { returnDates = []; originsRet = []; }
+      mode = "booked leg";
+    } else {
+      originsOut = (sundaySweep || !w.preferred_origin) ? origins : [String(w.preferred_origin).toUpperCase()];
+      originsRet = w.watch_return === false ? [] : originsOut;
+      if (w.watch_return === false) returnDates = [];
+      mode = sundaySweep ? "full sweep" : "daily check";
+    }
+    const baselineOut = [...departDates].sort().pop() || null;   // latest departure: earlier days buy hotel nights
+    const baselineRet = [...returnDates].sort()[0] || null;      // earliest return: later days buy hotel nights
+
+    type Found = { leg: string; origin: string; date: string; price: number; effective: number; airline: string; stops: number; url: string; departAt: string; extraNights: number; fits: boolean };
     const found: Found[] = [];
     const errors: string[] = [];
+    let offersKept = 0;
 
-    for (const origin of originsToday) for (const departDate of departDates) for (const returnDate of returnDates) {
-      if (!departDate) continue;
+    const legs: { leg: "out" | "ret"; origins: string[]; dates: string[] }[] = [
+      { leg: "out", origins: originsOut, dates: departDates },
+      { leg: "ret", origins: originsRet, dates: returnDates },
+    ];
+    for (const L of legs) for (const origin of L.origins) for (const date of L.dates) {
       if (searches >= MAX_SEARCHES_PER_RUN) { errors.push("search budget for this run used up"); break; }
-      const params = new URLSearchParams({ engine: "google_flights", departure_id: origin, arrival_id: String(w.destination).toUpperCase(), outbound_date: departDate, currency: "USD", hl: "en", adults: String(pax), api_key: serpKey });
-      if (returnDate) { params.set("return_date", returnDate); params.set("type", "1"); } else params.set("type", "2");
-      if (w.nonstop_only) params.set("stops", "1");
+      const from = L.leg === "out" ? origin : dest, to = L.leg === "out" ? dest : origin;
+      const params = new URLSearchParams({ engine: "google_flights", departure_id: from, arrival_id: to, outbound_date: date, type: "2", currency: "USD", hl: "en", adults: String(pax), sort_by: "2", api_key: serpKey });
       searches += 1;
       let res: Offer;
       try {
         const r = await fetch(`${SERP}?${params}`);
         res = await r.json();
-        if (!r.ok || res?.error) { errors.push(`${origin} ${departDate}: ${res?.error || r.status}`); await sleep(DELAY_MS); continue; }
-      } catch (err) { errors.push(`${origin} ${departDate}: ${(err as Error).message}`); await sleep(DELAY_MS); continue; }
+        if (!r.ok || res?.error) { errors.push(`${L.leg} ${from}-${to} ${date}: ${res?.error || r.status}`); await sleep(DELAY_MS); continue; }
+      } catch (err) { errors.push(`${L.leg} ${from}-${to} ${date}: ${(err as Error).message}`); await sleep(DELAY_MS); continue; }
 
       const offers: Offer[] = [...(res.best_flights || []), ...(res.other_flights || [])].filter((o: Offer) => Number(o?.price) > 0);
-      if (!offers.length) { errors.push(`${origin} ${departDate}: no offers`); await sleep(DELAY_MS); continue; }
-      const best = offers.sort((a: Offer, b: Offer) => Number(a.price) - Number(b.price))[0];
-      // Google prices the whole party at this adults count, so this is a party total.
-      const price = Number(best.price);
-      const segs: Offer[] = best.flights || [];
-      const carrier = segs[0]?.airline || "";
-      const flightNums = segs.map((s: Offer) => s.flight_number).filter(Boolean).join(",");
-      const stops = Math.max(0, segs.length - 1);
-      const departAt = segs[0]?.departure_airport?.time || null;
-      const arriveAt = segs[segs.length - 1]?.arrival_airport?.time || null;
+      if (!offers.length) { errors.push(`${L.leg} ${from}-${to} ${date}: no offers`); await sleep(DELAY_MS); continue; }
+      const pref = prefs[L.leg];
+      const seen: Seen[] = offers.map((o: Offer) => {
+        const d = describe(o);
+        const t = hhmm(d.departAt);
+        const timeOk = !t || ((!pref.after || t >= pref.after) && (!pref.before || t <= pref.before));
+        const stopsOk = maxStops == null || d.stops <= maxStops;
+        return { ...d, fits: timeOk && stopsOk };
+      }).sort((a, b) => (Number(b.fits) - Number(a.fits)) || (a.price - b.price));
+      // Google prices the whole party at this adults count: a party total.
+      const best = seen[0];
+      const url = "https://www.google.com/travel/flights?q=" + encodeURIComponent(`flights from ${from} to ${to} on ${date} one way`);
 
-      // True cost, not sticker price: an earlier departure buys hotel nights,
-      // a school-hours departure and a longer drive both cost something real.
-      const extraNights = baselineDepart ? Math.max(0, daysBetween(baselineDepart, departDate)) : 0;
+      // True cost, not sticker price: an earlier departure (or a later return)
+      // buys hotel nights; a school-hours departure and a longer drive both
+      // cost something real.
+      const extraNights = L.leg === "out" ? (baselineOut ? Math.max(0, daysBetween(baselineOut, date)) : 0) : (baselineRet ? Math.max(0, daysBetween(date, baselineRet)) : 0);
       const hotelCost = extraNights * hotelRate;
-      let timePenalty = 0;
-      if (afterTime && departAt) { const hhmm = String(departAt).slice(11, 16); if (hhmm && hhmm < afterTime) timePenalty = earlyPen; }
+      const timePenalty = best.fits ? 0 : earlyPen;
       const originPenalty = Number(penalties[origin]) || 0;
-      const effective = price + hotelCost + timePenalty + originPenalty;
-      const layovers = best.layovers || null;
-      const url = "https://www.google.com/travel/flights?q=" + encodeURIComponent(`flights from ${origin} to ${w.destination} on ${w.depart_date}${w.return_date ? ` returning ${w.return_date}` : ""}`);
+      const effective = best.price + hotelCost + timePenalty + originPenalty;
 
       const row = {
-        watch_id: w.id, origin, price, currency: "USD", airline: carrier, flight_numbers: flightNums, depart_at: departAt, arrive_at: arriveAt,
-        duration_minutes: best.total_duration ?? null, layovers, max_layover_minutes: Array.isArray(layovers) && layovers.length ? Math.max(...layovers.map((l: Offer) => Number(l.duration) || 0)) : null,
-        stops, booking_url: url, source: "serpapi-google-flights", searched_depart_date: departDate, searched_return_date: returnDate,
-        effective_cost: effective, price_per_person: Math.round(price / pax * 100) / 100, effective_per_person: Math.round(effective / pax * 100) / 100,
-        effective_breakdown: { fare: price, extra_nights: extraNights, hotel_cost: hotelCost, time_penalty: timePenalty, origin_penalty: originPenalty, effective_cost: effective }, raw: best,
+        watch_id: w.id, leg: L.leg, origin, price: best.price, currency: "USD", airline: best.airline, flight_numbers: best.flightNums, depart_at: best.departAt, arrive_at: best.arriveAt,
+        duration_minutes: best.duration, layovers: best.layovers, max_layover_minutes: best.maxLayover, stops: best.stops, booking_url: url, source: "serpapi-google-flights",
+        searched_depart_date: date, searched_return_date: null, effective_cost: effective, price_per_person: Math.round(best.price / pax * 100) / 100, effective_per_person: Math.round(effective / pax * 100) / 100,
+        effective_breakdown: { fare: best.price, extra_nights: extraNights, hotel_cost: hotelCost, time_penalty: timePenalty, origin_penalty: originPenalty, effective_cost: effective, fits: best.fits, leg: L.leg }, raw: best.raw,
       };
       const { error } = await db.from("flight_prices").insert(row);
-      if (error) errors.push(`${origin} ${departDate}: could not save (${error.message})`);
-      found.push({ origin, price, effective, airline: carrier, stops, url, departDate, returnDate, departAt: departAt || "", extraNights });
+      if (error) errors.push(`${L.leg} ${from}-${to} ${date}: could not save (${error.message})`);
+      const offerRows = seen.slice(0, OFFERS_KEPT).map((s, i) => ({
+        watch_id: w.id, leg: L.leg, origin, destination: dest, depart_date: date, rank: i + 1, price: s.price, price_per_person: Math.round(s.price / pax * 100) / 100,
+        airline: s.airline, flight_numbers: s.flightNums, depart_at: s.departAt, arrive_at: s.arriveAt, stops: s.stops, duration_minutes: s.duration, layovers: s.layovers, max_layover_minutes: s.maxLayover, fits: s.fits, booking_url: url,
+      }));
+      const { error: oerr } = await db.from("flight_offers").insert(offerRows);
+      if (oerr) errors.push(`${L.leg} ${from}-${to} ${date}: offers not saved (${oerr.message})`); else offersKept += offerRows.length;
+      found.push({ leg: L.leg, origin, date, price: best.price, effective, airline: best.airline, stops: best.stops, url, departAt: best.departAt || "", extraNights, fits: best.fits });
       await sleep(DELAY_MS);
     }
 
     await db.from("flight_watches").update({ last_checked_at: new Date().toISOString() }).eq("id", w.id);
-    if (!found.length) { report.push({ watch: w.label, mode, searches: 0, errors }); continue; }
+    const outs = found.filter((f) => f.leg === "out"), rets = found.filter((f) => f.leg === "ret");
+    if (!outs.length && !rets.length) { report.push({ watch: w.label, mode, searches: 0, errors }); continue; }
 
-    // Decide whether this is worth an alert. Recommend on effective cost, test
-    // the target on the fare, alert on an event (new low, first crossing, a
-    // rebook-worthy drop) rather than a standing condition.
-    const cheapestNow = [...found].sort((a, b) => a.effective - b.effective)[0];
-    const cheapestFare = [...found].sort((a, b) => a.price - b.price)[0];
-    const { data: hist } = await db.from("flight_prices").select("price,observed_at").eq("watch_id", w.id).order("price", { ascending: true }).limit(200);
-    const prior = (hist || []).filter((h) => ptDate(new Date(h.observed_at)) < today).map((h) => Number(h.price));
-    const priorLow = prior.length ? Math.min(...prior) : null;
-    const nowSeat = cheapestFare.price / pax;
-    const lowSeat = priorLow != null ? priorLow / pax : null;
+    const summary: Record<string, unknown> = { watch: w.label, mode, searches: found.length, offers: offersKept, errors };
     let reason: string | null = null;
-    let firstEver = false, crossedNow = false;
-    if (w.booked_at) {
-      const paidSeat = Number(w.booked_out_cash) || 0;
-      const thresh = Number(w.rebook_threshold) || 50;
-      const drop = paidSeat - nowSeat;
-      if (paidSeat > 0 && drop >= thresh) reason = `${money(drop)}/seat below the ${money(paidSeat)} you paid, worth rebooking for the credit`;
-    } else {
-      const newLow = lowSeat != null && nowSeat < lowSeat;
-      firstEver = lowSeat == null;
-      crossedNow = Boolean(w.target_price) && nowSeat <= Number(w.target_price) && !w.last_alerted_at;
-      if (newLow) reason = `a new low, was ${money(lowSeat as number)}/seat`;
-      else if (crossedNow) reason = `at or below your ${money(Number(w.target_price))}/seat target`;
+    let cheapestNow: Found | null = null, cheapestFare: Found | null = null;
+    let firstEver = false, crossedNow = false, lowSeat: number | null = null, nowSeat = 0;
+    if (outs.length) {
+      cheapestNow = [...outs].sort((a, b) => a.effective - b.effective)[0];
+      cheapestFare = [...outs].sort((a, b) => a.price - b.price)[0];
+      summary.best_per_seat = Math.round(cheapestNow.effective / pax); summary.best_origin = cheapestNow.origin; summary.cheapest_fare_per_seat = Math.round(cheapestFare.price / pax);
+      summary.best_fits = cheapestNow.fits;
+      const { data: hist } = await db.from("flight_prices").select("price,observed_at,leg").eq("watch_id", w.id).in("leg", ["out", "rt"]).order("price", { ascending: true }).limit(200);
+      const prior = (hist || []).filter((h) => ptDate(new Date(h.observed_at)) < today).map((h) => Number(h.price));
+      const priorLow = prior.length ? Math.min(...prior) : null;
+      nowSeat = cheapestFare.price / pax;
+      lowSeat = priorLow != null ? priorLow / pax : null;
+      if (w.booked_at) {
+        const paidSeat = Number(w.booked_out_cash) || 0, thresh = Number(w.rebook_threshold) || 50, drop = paidSeat - nowSeat;
+        if (paidSeat > 0 && drop >= thresh) reason = `outbound ${money(drop)}/seat below the ${money(paidSeat)} you paid, worth rebooking for the credit`;
+      } else {
+        const newLow = lowSeat != null && nowSeat < lowSeat;
+        firstEver = lowSeat == null;
+        crossedNow = Boolean(w.target_price) && nowSeat <= Number(w.target_price) && !w.last_alerted_at;
+        if (newLow) reason = `a new low, was ${money(lowSeat as number)}/seat`;
+        else if (crossedNow) reason = `at or below your ${money(Number(w.target_price))}/seat target`;
+      }
+    }
+    if (rets.length) {
+      const bestRet = [...rets].sort((a, b) => a.effective - b.effective)[0];
+      summary.return_per_seat = Math.round(bestRet.price / pax); summary.return_origin = bestRet.origin; summary.return_date = bestRet.date; summary.return_fits = bestRet.fits;
+      const paidRet = Number(w.booked_ret_cash) || 0;
+      if (paidRet > 0 && !reason) { const drop = paidRet - bestRet.price / pax; if (drop >= (Number(w.rebook_threshold) || 50)) reason = `return ${money(drop)}/seat below the ${money(paidRet)} you paid, worth rebooking for the credit`; }
     }
     const alertedRecently = w.last_alerted_at ? (Date.now() - new Date(w.last_alerted_at).getTime()) < 20 * 3600 * 1000 : false;
-    const summary: Record<string, unknown> = { watch: w.label, mode, searches: found.length, best_per_seat: Math.round(cheapestNow.effective / pax), best_origin: cheapestNow.origin, cheapest_fare_per_seat: Math.round(nowSeat), errors };
     if (!reason) { summary.alert = w.booked_at ? "booked, not enough of a drop" : `no alert, prior low ${lowSeat != null ? money(lowSeat) : "none yet"}`; report.push(summary); continue; }
     if (alertedRecently) { summary.alert = `would alert (${reason}) but already sent in the last 20h`; report.push(summary); continue; }
     if (!w.booked_at && firstEver && !crossedNow) { summary.alert = "first reading recorded; nothing to compare yet"; report.push(summary); continue; }
 
     const lines: string[] = [];
-    const partyNote = pax > 1 ? ` (${money(cheapestNow.price)} for ${pax})` : "";
-    lines.push(`${cheapestNow.origin} ${cheapestNow.departDate} -> ${w.destination} is ${money(cheapestNow.price / pax)}/seat${partyNote}, ${reason}.`);
-    if (cheapestNow.extraNights > 0) lines.push(`Leaves ${cheapestNow.extraNights} day(s) early: ${money(cheapestNow.effective / pax)}/seat all-in with the extra hotel night, still the best option.`);
-    if (cheapestFare.origin !== cheapestNow.origin || cheapestFare.departDate !== cheapestNow.departDate) lines.push(`Cheapest fare was ${cheapestFare.origin} ${cheapestFare.departDate} at ${money(cheapestFare.price / pax)}/seat, but costs more all-in.`);
-    lines.push(`${cheapestNow.departDate}${cheapestNow.returnDate ? ` to ${cheapestNow.returnDate}` : ""}: ${cheapestNow.airline}, ${cheapestNow.stops === 0 ? "nonstop" : `${cheapestNow.stops} stop(s)`}`);
-    if (found.length > 1) {
+    const lead = cheapestNow || rets[0];
+    const partyNote = pax > 1 ? ` (${money(lead.price)} for ${pax})` : "";
+    lines.push(`${lead.leg === "out" ? `${lead.origin} ${lead.date} -> ${dest}` : `${dest} ${lead.date} -> ${lead.origin}`} is ${money(lead.price / pax)}/seat${partyNote}, ${reason}.`);
+    if (lead.extraNights > 0) lines.push(`${lead.extraNights} extra hotel night(s): ${money(lead.effective / pax)}/seat all-in, still the best option.`);
+    if (!lead.fits) lines.push(`Note: this itinerary is outside your stop or time preferences; the fitting options cost more today.`);
+    if (cheapestNow && cheapestFare && (cheapestFare.origin !== cheapestNow.origin || cheapestFare.date !== cheapestNow.date)) lines.push(`Cheapest fare was ${cheapestFare.origin} ${cheapestFare.date} at ${money(cheapestFare.price / pax)}/seat, but costs more all-in.`);
+    lines.push(`${lead.date}: ${lead.airline}, ${lead.stops === 0 ? "nonstop" : `${lead.stops} stop(s)`}`);
+    if (outs.length > 1) {
       const byOrigin = new Map<string, Found>();
-      for (const f of found) { const b = byOrigin.get(f.origin); if (!b || f.effective < b.effective) byOrigin.set(f.origin, f); }
-      lines.push("By airport (per seat): " + [...byOrigin.values()].sort((a, b) => a.effective - b.effective).map((f) => `${f.origin} ${money(f.price / pax)}`).join("  "));
+      for (const f of outs) { const b = byOrigin.get(f.origin); if (!b || f.effective < b.effective) byOrigin.set(f.origin, f); }
+      lines.push("Outbound by airport (per seat): " + [...byOrigin.values()].sort((a, b) => a.effective - b.effective).map((f) => `${f.origin} ${money(f.price / pax)}`).join("  "));
     }
-    lines.push(cheapestNow.url);
+    if (rets.length) { const b = [...rets].sort((a, b) => a.price - b.price)[0]; lines.push(`Return from ${money(b.price / pax)}/seat on ${b.date} (${b.airline}, ${b.stops === 0 ? "nonstop" : `${b.stops} stop(s)`}).`); }
+    lines.push(lead.url);
     const message = lines.join("\n");
     const recipients: string[] = [];
     if (w.alert_phone && w.carrier_gateway) recipients.push(`${String(w.alert_phone).replace(/\D/g, "")}@${w.carrier_gateway}`);
     if (w.alert_email) recipients.push(w.alert_email);
-    const subject = `Flight ${w.destination} ${money(cheapestNow.price / pax)}/seat`;
+    const subject = `Flight ${dest} ${money(lead.price / pax)}/seat`;
 
     let sentVia: string | null = null, sendError: string | null = null;
     if (!dryRun && recipients.length) {
