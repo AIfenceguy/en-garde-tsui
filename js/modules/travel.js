@@ -569,14 +569,16 @@ export async function mountTravel(root) {
                         ])))
                     ]);
                 };
-                card.appendChild(dayStrip('out', `Fly out by day ${MID} best that works, per person`, outOpts));
-                card.appendChild(dayStrip('ret', `Return by day ${MID} best that works, per person`, retOpts));
+                // A leg with nothing that works yields no strip; appendChild(null) throws.
+                const add = (node) => { if (node) card.appendChild(node); };
+                add(dayStrip('out', `Fly out by day ${MID} best that works, per person`, outOpts));
+                add(dayStrip('ret', `Return by day ${MID} best that works, per person`, retOpts));
 
                 card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '14px', lineHeight: '1.5' } }, [
                     `Every option from the latest check, per person, one seat${prefBits.length ? `. Your preferences: ${prefBits.join(', ')}` : ''}. Change them under Edit.`
                 ]));
-                card.appendChild(optionsBlock(`Fly out ${MID} ${originList.join('/')} ${ARROW} ${w.destination}`, outOpts.filter(passesStops)));
-                card.appendChild(optionsBlock(`Return ${MID} ${w.destination} ${ARROW} home`, retOpts.filter(passesStops)));
+                add(optionsBlock(`Fly out ${MID} ${originList.join('/')} ${ARROW} ${w.destination}`, outOpts.filter(passesStops)));
+                add(optionsBlock(`Return ${MID} ${w.destination} ${ARROW} home`, retOpts.filter(passesStops)));
             }
 
             // Today against the history, in one sentence each.
