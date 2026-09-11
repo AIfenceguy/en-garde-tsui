@@ -48,12 +48,16 @@ before anything commercial. I would like to do this properly, so I am asking for
    record on a schedule with your ETags honoured, plus the public tournament listings refreshed
    once a day on our side rather than per page view, well inside the published limits.
 
-3. **Two questions about data I cannot get from the API today.** First, national standings: the
-   tool shows each family its own fencer's rank and points and a few reference marks, never a
-   list. 14meters carries the 36 lists daily. Could standings be exposed through the API, or may
-   the tool read 14meters for that under the same permission? Second, official results of USA
-   Fencing national events, which register outside AskFRED: do you hold them, and if not, is
-   there a source you would point me to?
+3. **Three questions about data I cannot get from the API today.** First, national standings:
+   the tool shows each family its own fencer's rank and points and a few reference marks, never
+   a list. 14meters carries the 36 lists daily. Could standings be part of the paid arrangement,
+   through the API or by reading 14meters, so that the tool never has to read USA Fencing's own
+   pages for them? Second, official results of USA Fencing national events, which register
+   outside AskFRED: do you hold them, and if not, is there a source you would point me to?
+   Third, so I describe things correctly if USA Fencing ever asks: is the USA Fencing data you
+   carry, membership records and the points lists, provided under an agreement with USA Fencing,
+   and would your permission to us cover our use of it? I would rather know the answer now than
+   assume it.
 
 I am happy to share what the tool looks like, to report beta issues as I find them, and to
 change anything about how it reads your data. Thank you for building the developer program.
