@@ -31,9 +31,9 @@ footing until there is an answer, and do not charge anyone until there is one.
 Dear USA Fencing team,
 
 I am a fencing parent in the Orange Coast division. My two sons fence foil, Y12 and Y14/Cadet.
-Over the past year I built a small web tool for our family called En Garde: a training journal
-and a season planner that works out which tournaments are worth entering, how the points add up,
-and what each trip will cost. A few other fencing families have asked to use it, and I would
+Over the past year I built a small web tool for our family: a training journal and a season
+planner that works out which tournaments are worth entering, how the points add up, and what
+each trip will cost. A few other fencing families have asked to use it, and I would
 like to let them, free of charge.
 
 Part of the tool reads the same public pages of member.usafencing.org that any parent reads by
@@ -43,7 +43,7 @@ allow personal use of that content and ask that anything beyond it be permitted 
 asking for that permission for the following, and nothing more:
 
 - About ten public pages a day, read once and cached, with an identifying user agent
-  (EnGardeInsight/1.0) so you can always see it is us.
+  (FencingFamilyPlanner/1.0, carrying my email address) so you can always see it is us.
 - The copy is used only to show each family its own fencer's standing, the points at a few
   ranks, and an entrant count. No ranking list, results list, or other USA Fencing content is
   ever displayed or redistributed, and USA Fencing is credited as the source on screen.

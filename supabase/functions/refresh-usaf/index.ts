@@ -29,7 +29,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const UA = "EnGardeInsight/1.0 (+https://aifenceguy.github.io/en-garde-tsui; on request, cached)";
+const UA = "FencingFamilyPlanner/1.0 (+mailto:rtsui.jlconcepts@gmail.com; on request, cached)";
 const HOST = "https://member.usafencing.org";
 const DATA_URL = `${HOST}/rankings/data`;
 const POINTS_URL = `${HOST}/points/national`;
