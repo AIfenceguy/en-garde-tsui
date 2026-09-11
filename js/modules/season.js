@@ -1354,34 +1354,37 @@ function usafCard(ctx) {
     return wrap;
 }
 
-// The app's own number: an Elo replayed over every placing USA Fencing
-// publishes, fitted to the strength scale the app already shows. No
-// FencingTracker read is needed to produce it.
+// The app's own number: fitted from every recorded bout, pools and
+// eliminations, as a curve over time (supabase-backups\strength-model.py,
+// nightly): who won and how close, on our own scale where 400 points is
+// 10-to-1 odds in a 15-touch bout. Shown only with its basis, and only once
+// a fencer has enough bouts on record; a thin record says so instead.
 async function ownRating(host, profile) {
-    let row = null;
-    if (profile?.usaf_member_id) {
-        const { data } = await supa.from('athlete_ratings').select('*').eq('member_id', profile.usaf_member_id).maybeSingle();
-        row = data;
-    }
-    if (!row && profile?.usaf_user_id) {
-        const { data: r } = await supa.from('usaf_rankings').select('name').eq('user_id', profile.usaf_user_id).order('as_of', { ascending: false }).limit(1);
-        if (r?.[0]?.name) {
-            const { data } = await supa.from('athlete_ratings').select('*').ilike('name', r[0].name).limit(1);
-            row = data?.[0] || null;
-        }
-    }
-    if (!row) return;
-    const { data: cal } = await supa.from('rating_calibration').select('n,r2,athletes,events').eq('id', 1).maybeSingle();
+    if (!profile?.usaf_member_id) return;
+    const { data: row } = await supa.from('own_ratings').select('*').eq('tracker_id', profile.usaf_member_id).maybeSingle();
+    const { data: fit } = await supa.from('own_rating_fit').select('bouts,fencers,last_bout').eq('id', 1).maybeSingle();
+    if (!row && !fit) return;
+    const enough = Boolean(row && row.bouts >= 12);
     const box = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', padding: '10px 0 6px' } });
     box.appendChild(el('div', {}, [
-        label('Own rating'),
-        el('div', { style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: '30px', color: INK, lineHeight: '1.1', marginTop: '2px' } }, [String(row.strength_est ?? Math.round(row.rating))])
+        label('Own strength'),
+        el('div', { style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: '30px', color: enough ? INK : INK_MUTE, lineHeight: '1.1', marginTop: '2px' } },
+            [enough ? `${row.rating} \u00b1 ${row.sd}` : 'not yet'])
     ]));
-    box.appendChild(el('div', { class: 'label', style: { color: INK_MUTE, textAlign: 'right', lineHeight: '1.5' } }, [
-        `from ${row.games} placings on record`,
-        el('br'),
-        cal?.n ? `scale fitted on ${cal.n} fencers \u00b7 ${cal.athletes} rated over ${cal.events} events` : 'unfitted scale'
-    ]));
+    const lines = [];
+    if (enough) {
+        lines.push(`from ${row.bouts} bouts over ${row.events} events, through ${row.last_bout}`);
+        lines.push(`events in the last 3 / 6 / 9 / 12 months: ${row.events_90 ?? 0} / ${row.events_180 ?? 0} / ${row.events_270 ?? 0} / ${row.events_365 ?? 0}`);
+        if (row.delta_365 != null && (row.bouts_365 ?? 0) > 0) lines.push(`${row.delta_365 >= 0 ? '+' : '\u2212'}${Math.abs(row.delta_365)} over the last year`);
+    } else if (row) {
+        lines.push(`${row.bouts} bouts on record through ${row.last_bout}; a number needs 12`);
+    } else {
+        lines.push('no recorded bouts yet');
+    }
+    if (fit?.bouts) lines.push(`${fit.fencers} fencers rated from ${fit.bouts} bouts, through ${fit.last_bout}`);
+    const right = el('div', { class: 'label', style: { color: INK_MUTE, textAlign: 'right', lineHeight: '1.5' } });
+    lines.forEach((t, i) => { if (i) right.appendChild(el('br')); right.appendChild(document.createTextNode(t)); });
+    box.appendChild(right);
     host.appendChild(box);
 }
 
