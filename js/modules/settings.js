@@ -24,7 +24,7 @@ export async function mountSettings(root) {
     const session = getState().session;
     const [{ data: home }, { data: profiles }, whoRes] = await Promise.all([
         supa.from('household').select('*').maybeSingle(),
-        supa.from('profiles').select('id,name,kind,role,login_user_id,birth_year').order('name'),
+        supa.from('profiles').select('id,name,kind,role,login_user_id,birth_year,usaf_user_id,usaf_member_id,tracker_id,tracker_url').order('name'),
         // Which address each fencer signs in with, from the login service
         // (the browser cannot read auth users itself). Never the password.
         supa.functions.invoke('kid-login', { body: { mode: 'who' } }).catch(() => ({ data: null }))
@@ -97,15 +97,18 @@ function fencersCard(session, profiles) {
         const box = el('div', { style: { padding: '10px 0', borderTop: '1px solid var(--rule)' } });
         const name = el('input', { type: 'text', class: 'field-input', value: p.name || '' });
         const by = el('input', { type: 'number', class: 'field-input', value: p.birth_year || '', min: '2005', max: '2020' });
-        const usaf = el('input', { type: 'text', class: 'field-input', value: p.usaf_user_id || '', placeholder: 'matched automatically from the standings', inputmode: 'numeric' });
+        // The number on the USA Fencing membership card (100xxxxxx). The
+        // portal's internal user id is matched automatically and never typed.
+        const usaf = el('input', { type: 'text', class: 'field-input', value: p.usaf_member_id || '', placeholder: 'on the membership card, e.g. 100280844', inputmode: 'numeric' });
         const tracker = el('input', { type: 'text', class: 'field-input', value: p.tracker_url || (p.tracker_id ? `https://fencingtracker.com/p/${p.tracker_id}/x` : ''), placeholder: 'results profile link (optional)' });
         box.appendChild(el('div', { style: { color: INK, fontSize: '15px', fontWeight: '600', marginBottom: '6px' } }, [p.name, el('span', { class: 'label', style: { color: p.login_user_id ? GOOD : INK_MUTE, marginLeft: '10px' } }, [p.login_user_id ? 'has a login' : 'no login yet'])]));
-        box.appendChild(field('Name', name)); box.appendChild(field('Born', by)); box.appendChild(field('USA Fencing id', usaf)); box.appendChild(field('Results profile link', tracker));
+        box.appendChild(field('Name', name)); box.appendChild(field('Born', by)); box.appendChild(field('USA Fencing member number', usaf)); box.appendChild(field('Results profile link', tracker));
         const save = el('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-mono-label' }, ['Save']);
         save.onclick = async () => {
             save.disabled = true;
             const m = String(tracker.value).match(/\/p\/(\d{6,10})/);
-            const { error } = await supa.from('profiles').update({ name: name.value.trim() || p.name, birth_year: Number(by.value) || null, usaf_user_id: Number(usaf.value) || null, tracker_url: tracker.value.trim() || null, tracker_id: m ? m[1] : p.tracker_id }).eq('id', p.id);
+            const memberNo = String(usaf.value || '').replace(/\D/g, '') || null;
+            const { error } = await supa.from('profiles').update({ name: name.value.trim() || p.name, birth_year: Number(by.value) || null, usaf_member_id: memberNo, tracker_url: tracker.value.trim() || null, tracker_id: m ? m[1] : p.tracker_id }).eq('id', p.id);
             save.disabled = false;
             if (error) { toast('Could not save: ' + error.message, 'error'); return; }
             toast('Saved'); location.reload();
