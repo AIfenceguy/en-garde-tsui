@@ -84,3 +84,11 @@ alter table own_ratings add column if not exists events_180 integer;
 alter table own_ratings add column if not exists events_270 integer;
 alter table own_ratings add column if not exists events_365 integer;
 alter table own_rating_fit add column if not exists local_weight numeric;
+
+-- Which results pages count for the strength model (Ricky, 2026-09-11: only
+-- what USA Fencing lists as national, regional or international; local is
+-- practice). Filled by strength-model.py from usaf_tournaments matches.
+alter table ft_result_events add column if not exists tier text;          -- national | regional | international | local
+alter table ft_result_events add column if not exists tier_source text;   -- usaf (matched a listed tournament) | unlisted
+alter table own_rating_fit add column if not exists events_counted integer;
+alter table own_rating_fit add column if not exists events_left_out integer;

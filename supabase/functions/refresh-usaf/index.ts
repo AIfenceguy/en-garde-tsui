@@ -37,7 +37,8 @@ const EVENT_URL = `${HOST}/rankings/events`;
 const DELAY_MS = 500;
 const MAX_PAGES = 4;
 const MAX_EVENTS = 6;
-const MAX_TOURNAMENTS = 4;
+const MAX_TOURNAMENTS = 12;
+const UPCOMING_DAYS = 120;
 const CATS: Record<string, string> = { CADET: "cadet", JUNIOR: "junior", SENIOR: "senior", DIV1: "div1", VETERAN: "vet", Y14: "y14", Y12: "y12", Y10: "y10" };
 const YOUTH = new Set(["Y10", "Y12", "Y14"]);
 const CODE_CATEGORY: Record<string, string> = { Y10: "y10", Y12: "y12", Y14: "y14", CDT: "cadet", JNR: "junior", DV1: "div1", SNR: "senior", VET: "vet" };
@@ -235,6 +236,18 @@ function parseTournamentPage(html: string): TournamentPage {
   return { name, start: when.start, end: when.end, venue, city, events };
 }
 const codeCategory = (code: string | null) => CODE_CATEGORY[String(code || "").slice(0, 3).toUpperCase()] || null;
+// A snapshot is keyed by name; two athletes with the same name on one list
+// (the Y14 women's list had one, 2026-09-11) keep both rows, the second
+// marked by its member number, rather than failing the whole list.
+function uniqueNames(rows: { name: string; member_id?: string | null; user_id?: number | null }[]) {
+  const seen = new Map<string, number>();
+  for (const r of rows) {
+    const k = r.name.toLowerCase();
+    const n = (seen.get(k) || 0) + 1;
+    seen.set(k, n);
+    if (n > 1) r.name = `${r.name} #${r.member_id || r.user_id || n}`;
+  }
+}
 
 Deno.serve(async (req) => {
   const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret" };
@@ -361,7 +374,18 @@ Deno.serve(async (req) => {
   }
 
   // ---- one tournament's events: ids, entrants, caps, closes ---------------
-  const tournamentIds: number[] = [...new Set([body.tournament_id, ...(Array.isArray(body.tournament_ids) ? body.tournament_ids : [])].map(Number).filter((n) => n > 0))].slice(0, MAX_TOURNAMENTS);
+  // upcoming: true reads the next dozen listed regional and national
+  // tournaments that were read longest ago (Ricky, 2026-09-11: entrant counts
+  // for every applicable competition, once a day). Four calls a day rotate
+  // through everything inside the window.
+  let tournamentIds: number[] = [...new Set([body.tournament_id, ...(Array.isArray(body.tournament_ids) ? body.tournament_ids : [])].map(Number).filter((n) => n > 0))].slice(0, MAX_TOURNAMENTS);
+  if (!tournamentIds.length && body.upcoming) {
+    const until = new Date(Date.now() + (Number(body.days) || UPCOMING_DAYS) * 86400000).toISOString().slice(0, 10);
+    const { data: up } = await db.from("usaf_tournaments").select("tournament_id,details_read_at").in("scope", ["national", "regional"])
+      .gte("start_date", today).lte("start_date", until).order("details_read_at", { ascending: true, nullsFirst: true }).limit(MAX_TOURNAMENTS);
+    tournamentIds = (up || []).map((t) => Number(t.tournament_id));
+    if (!tournamentIds.length) return json({ tournaments: [], note: "nothing listed inside the window" });
+  }
   if (tournamentIds.length) {
     const done: Record<string, unknown>[] = [];
     for (let i = 0; i < tournamentIds.length; i++) {
@@ -370,8 +394,11 @@ Deno.serve(async (req) => {
         const r = await fetch(`${HOST}/details/tournaments/${id}`, { headers: { "User-Agent": UA, "Accept": "text/html" } });
         if (!r.ok) { done.push({ tournament_id: id, error: `USA Fencing answered ${r.status}` }); continue; }
         const page = parseTournamentPage(await r.text());
-        if (!page.events.length) { done.push({ tournament_id: id, name: page.name, error: "no events found on the page" }); continue; }
-        await db.from("usaf_tournaments").upsert({ tournament_id: id, name: page.name, start_date: page.start, end_date: page.end, venue: page.venue, city: page.city, read_at: new Date().toISOString() }, { onConflict: "tournament_id" });
+        if (!page.events.length) {
+          await db.from("usaf_tournaments").update({ details_read_at: new Date().toISOString() }).eq("tournament_id", id);
+          done.push({ tournament_id: id, name: page.name, error: "no events found on the page" }); continue;
+        }
+        await db.from("usaf_tournaments").upsert({ tournament_id: id, name: page.name, start_date: page.start, end_date: page.end, venue: page.venue, city: page.city, read_at: new Date().toISOString(), details_read_at: new Date().toISOString() }, { onConflict: "tournament_id" });
         const year = (page.start || page.end || "").slice(0, 4);
         const evRows = page.events.map((e) => ({
           event_id: e.event_id, tournament_id: id, event_code: e.code, category: codeCategory(e.code), tier: tierOf(page.name), title: [e.code, year, page.name].filter(Boolean).join(" "),
@@ -417,6 +444,7 @@ Deno.serve(async (req) => {
       category, weapon: weaponCode, as_of: today, rank: row.rank, ties: row.tied ? 1 : null, moved: row.moved, name: row.name, points: row.points, yob: row.yob,
       member_id: row.member_id, division: row.division, club: row.club, carried: row.carried, results: row.results, ranking_id: `points/national/${weaponCode}/${ageKey}`,
     }));
+    uniqueNames(out);
     for (let i = 0; i < out.length; i += 100) {
       const { error } = await db.from("usaf_rankings").upsert(out.slice(i, i + 100), { onConflict: "category,weapon,as_of,name" });
       if (error) return json({ error: error.message }, 500);
@@ -490,6 +518,7 @@ Deno.serve(async (req) => {
     user_id: row.user_id || null, rating: row.weapon_rating || null, club: row.club_name || null, division: row.division_name || null, region: row.region_name || null,
     carried: (row.carried_scores || []).map(Number), results: compactResults(row), ranking_id: String(row.results?.[0]?.pivot?.ranking_id || ""),
   }));
+  uniqueNames(out);
   for (let i = 0; i < out.length; i += 100) {
     const { error } = await db.from("usaf_rankings").upsert(out.slice(i, i + 100), { onConflict: "category,weapon,as_of,name" });
     if (error) return json({ error: error.message }, 500);
