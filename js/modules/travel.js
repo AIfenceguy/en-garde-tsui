@@ -97,6 +97,10 @@ export async function mountTravel(root) {
         return;
     }
 
+    // Trips follow the season: every tournament a fencer is marked going to,
+    // reached by air, gets or keeps its flight watch before the list loads.
+    if (isParent()) { try { await supa.rpc('sync_trip_watches'); } catch (_) { /* shown from what exists */ } }
+
     const [{ data, error }, tripsRes] = await Promise.all([
         supa.from('flight_watches')
             .select('*, flight_prices(leg, price, currency, airline, booking_url, stops, origin, observed_at, searched_depart_date, searched_return_date, depart_at, arrive_at, ret_depart_at, ret_arrive_at, duration_minutes, flight_numbers, layovers, max_layover_minutes), flight_offers(leg, origin, destination, depart_date, rank, price_per_person, airline, flight_numbers, depart_at, arrive_at, stops, duration_minutes, layovers, max_layover_minutes, fits, booking_url, observed_at)')
@@ -514,11 +518,65 @@ export async function mountTravel(root) {
                 w.return_before ? `back before ${String(w.return_before).slice(0, 5)}` : null
             ].filter(Boolean);
             if (outOpts.length || retOpts.length) {
+                // A quick filter on the screen, remembered per trip: all
+                // flights, nonstop, or up to one stop. The watch's own stops
+                // setting (under Edit) is what the checker prices against.
+                const stopsKey = 'eg.travel.stops.' + w.id;
+                let stopsMode = 'all';
+                try { stopsMode = localStorage.getItem(stopsKey) || 'all'; } catch (_) { /* fine */ }
+                const passesStops = (o) => stopsMode === 'all' || (stopsMode === 'nonstop' ? Number(o.stops) === 0 : Number(o.stops) <= 1);
+                const filterBar = el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '4px', flexWrap: 'wrap', marginTop: '14px' } }, [
+                    el('span', { class: 'label', style: { color: INK_MUTE, marginRight: '6px' } }, ['Show']),
+                    ...[['all', 'all flights'], ['nonstop', 'nonstop'], ['onestop', 'up to 1 stop']].map(([k, t]) => el('button', {
+                        type: 'button', style: linkBtn(stopsMode === k ? 'var(--accent)' : INK_MUTE),
+                        onclick: () => { try { localStorage.setItem(stopsKey, k); } catch (_) { /* fine */ } renderList(); }
+                    }, [t]))
+                ]);
+                card.appendChild(filterBar);
+
+                // The prices that decide the trip: the best flight that works on
+                // each day of the window. Out: two days before, the day before,
+                // the competition day. Back: the same day and the day after.
+                const daysApartISO = (a, b) => Math.round((Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10)) - Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10))) / 86400000);
+                const firstEvent = trips.length ? String(trips[0].event_date).slice(0, 10) : null;
+                const lastEvent = lastTrip ? String(lastTrip.event_date).slice(0, 10) : null;
+                const dayLabel = (leg, date) => {
+                    const d = String(date).slice(0, 10);
+                    if (leg === 'out' && firstEvent) { const n = daysApartISO(firstEvent, d); if (n === 0) return 'competition day'; if (n === 1) return 'day before'; if (n === 2) return '2 days before'; if (n > 2) return `${n} days before`; }
+                    if (leg === 'ret' && lastEvent) { const n = daysApartISO(d, lastEvent); if (n === 0) return 'same day'; if (n === 1) return 'day after'; if (n > 1) return `${n} days after`; }
+                    return null;
+                };
+                const byDay = (rows) => {
+                    const m = new Map();
+                    for (const o of rows) {
+                        if (!passesStops(o) || whyNot(o)) continue;
+                        const k = String(o.depart_date).slice(0, 10);
+                        if (!m.has(k) || Number(o.price_per_person) < Number(m.get(k).price_per_person)) m.set(k, o);
+                    }
+                    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+                };
+                const dayStrip = (leg, title, rows) => {
+                    const days = byDay(rows);
+                    if (!days.length) return null;
+                    return el('div', { style: { marginTop: '12px' } }, [
+                        el('div', { class: 'kicker', style: { color: INK_MUTE } }, [title]),
+                        el('div', { style: { display: 'flex', gap: '18px', flexWrap: 'wrap', marginTop: '6px' } }, days.map(([date, o]) => el('a', {
+                            href: o.booking_url || '#', target: '_blank', rel: 'noopener', style: { textDecoration: 'none', minWidth: '96px' }
+                        }, [
+                            el('div', { style: { color: INK, fontFamily: 'var(--mono)', fontWeight: '700', fontSize: '20px' } }, [money(Number(o.price_per_person))]),
+                            el('div', { style: { color: INK, fontSize: '12px' } }, [fmtDate(date)]),
+                            el('div', { style: { color: INK_MUTE, fontSize: '11px' } }, [[dayLabel(leg, date), o.stops === 0 ? 'nonstop' : `${o.stops} stop${o.stops === 1 ? '' : 's'}`, o.airline].filter(Boolean).join(` ${MID} `)])
+                        ])))
+                    ]);
+                };
+                card.appendChild(dayStrip('out', `Fly out by day ${MID} best that works, per person`, outOpts));
+                card.appendChild(dayStrip('ret', `Return by day ${MID} best that works, per person`, retOpts));
+
                 card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '14px', lineHeight: '1.5' } }, [
-                    `Options from the latest check, per person, one seat${prefBits.length ? `. Your preferences: ${prefBits.join(', ')}` : ''}. Change them under Edit.`
+                    `Every option from the latest check, per person, one seat${prefBits.length ? `. Your preferences: ${prefBits.join(', ')}` : ''}. Change them under Edit.`
                 ]));
-                card.appendChild(optionsBlock(`Fly out ${MID} ${originList.join('/')} ${ARROW} ${w.destination}`, outOpts));
-                card.appendChild(optionsBlock(`Return ${MID} ${w.destination} ${ARROW} home`, retOpts));
+                card.appendChild(optionsBlock(`Fly out ${MID} ${originList.join('/')} ${ARROW} ${w.destination}`, outOpts.filter(passesStops)));
+                card.appendChild(optionsBlock(`Return ${MID} ${w.destination} ${ARROW} home`, retOpts.filter(passesStops)));
             }
 
             // Today against the history, in one sentence each.
@@ -543,6 +601,26 @@ export async function mountTravel(root) {
                         : isRoundTrip
                             ? (under ? `At or below your ${money(w.target_price)} per person alert ${EMD} book it.` : `Alert set at ${money(w.target_price)} per person; today is ${money(tripSeat - w.target_price)} above it.`)
                             : `Out ${money(perSeat)} plus return ${money(retWorks)} is ${money(tripSeat)} per person, ${under ? `under your ${money(w.target_price)} alert.` : `${money(tripSeat - w.target_price)} above your ${money(w.target_price)} alert.`}`
+                ]));
+            }
+
+            // One switch for the text: the checker alerts on a new low, a
+            // crossed target, or a rebook-worthy drop, and sends it only here.
+            if (isParent()) {
+                const textMe = el('input', {
+                    type: 'checkbox', checked: w.text_me !== false,
+                    onchange: async (e) => {
+                        const on = e.target.checked;
+                        try {
+                            await safeWrite({ table: 'flight_watches', op: 'update', payload: { text_me: on }, match: { id: w.id } });
+                            w.text_me = on;
+                            toast(on ? (w.alert_phone ? `Texts on for this trip, to ${w.alert_phone}` : 'Texts on, but no mobile number yet: add one under Edit') : 'Texts off for this trip');
+                        } catch (err) { e.target.checked = !on; toast('Could not save: ' + (err.message || err), 'error'); }
+                    }
+                });
+                card.appendChild(el('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', color: INK, fontSize: '13px', cursor: 'pointer' } }, [
+                    textMe, el('span', { style: { color: INK } }, ['Text me when the lowest fare changes']),
+                    w.alert_phone ? el('span', { class: 'label', style: { color: INK_MUTE } }, [w.alert_phone]) : el('span', { class: 'label', style: { color: WARN } }, ['no number yet, add one under Edit'])
                 ]));
             }
 

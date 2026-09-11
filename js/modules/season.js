@@ -672,6 +672,8 @@ function weekendsCard(key, title, sub, rows, ctx, refreshed) {
                     b.disabled = true;
                     try {
                         await safeWrite({ table: 'member_events', op: 'upsert', onConflict: 'profile_id,season_event_id', payload: { profile_id: ctx.profile.id, season_event_id: e.id, ft_event_id: e.ft_event_id || null, category: e.category, tournament: e.tournament, event_date: e.start_date, status: 'going' } });
+                        // A trip reached by air gets its flight watch the moment it is decided.
+                        try { await supa.rpc('sync_trip_watches'); } catch (_) { /* the Travel screen syncs again on open */ }
                         location.reload();
                     } catch (err) { b.disabled = false; toast('Could not save: ' + (err.message || err), 'error'); }
                 };
@@ -682,6 +684,7 @@ function weekendsCard(key, title, sub, rows, ctx, refreshed) {
                     b.disabled = true;
                     try {
                         await safeWrite({ table: 'member_events', op: 'update', match: { profile_id: ctx.profile.id, season_event_id: e.id }, payload: { status: 'considering' } });
+                        try { await supa.rpc('sync_trip_watches'); } catch (_) { /* the Travel screen syncs again on open */ }
                         location.reload();
                     } catch (err) { b.disabled = false; toast('Could not save: ' + (err.message || err), 'error'); }
                 };

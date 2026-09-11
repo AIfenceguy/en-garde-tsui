@@ -277,7 +277,8 @@ Deno.serve(async (req) => {
     const subject = `Flight ${dest} ${money(lead.price / pax)}/seat`;
 
     let sentVia: string | null = null, sendError: string | null = null;
-    if (!dryRun && recipients.length) {
+    if (w.text_me === false) sendError = "texts are switched off for this trip; alert stored only";
+    else if (!dryRun && recipients.length) {
       const resendKey = Deno.env.get("RESEND_API_KEY") || "";
       const smtpUser = Deno.env.get("SMTP_USER") || "", smtpPass = Deno.env.get("SMTP_PASS") || "";
       if (resendKey) {
