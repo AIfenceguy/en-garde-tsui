@@ -249,6 +249,34 @@ export async function mountTravel(root) {
             const perSeat = cur / pax;
             const hitTarget = w.target_price && perSeat <= w.target_price;
 
+            // Every itinerary the latest check saw, per leg, and the two rules
+            // the checker cannot know on its own: a return on the last event's
+            // day must leave after the fencer could be done, and a fare that
+            // sits in a hub for half a day is not a fare anyone wants.
+            const MAX_LAYOVER_MIN = 6 * 60;
+            const lastTrip = trips.length ? trips[trips.length - 1] : null;
+            const clockOf = (v) => String(v || '').replace('T', ' ').slice(11, 16);
+            const whyNot = (o) => {
+                if (o.fits === false) return 'outside your preferences';
+                if (Number(o.max_layover_minutes || 0) > MAX_LAYOVER_MIN) return 'long layover';
+                if (o.leg === 'ret' && lastTrip?.no_return_before && String(o.depart_date) === String(lastTrip.event_date)) {
+                    const t = clockOf(o.depart_at);
+                    if (t && t < String(lastTrip.no_return_before).slice(0, 5)) return `before ${String(lastTrip.no_return_before).slice(0, 5)}, the event may still be on`;
+                }
+                return null;
+            };
+            const offers = w.flight_offers || [];
+            const offerDay = (o) => String(o.observed_at).slice(0, 10);
+            const legOffers = (leg) => {
+                const rows = offers.filter((o) => o.leg === leg);
+                if (!rows.length) return [];
+                const day = rows.map(offerDay).sort().pop();
+                return rows.filter((o) => offerDay(o) === day)
+                    .sort((a, b) => (Number(!whyNot(b)) - Number(!whyNot(a))) || (Number(a.price_per_person) - Number(b.price_per_person)));
+            };
+            const outOpts = legOffers('out'), retOpts = legOffers('ret');
+            const retPick = retOpts.find((o) => !whyNot(o)) || retOpts[0] || null;
+
             // Always one person, never a party total. Ricky: "just show 1 person
             // cost, explicitly showing flyout, returning. no need to show 2
             // person as this confusing." Multiplying by headcount is easy;
@@ -271,11 +299,18 @@ export async function mountTravel(root) {
             // What was already bought, against today's fare.
             const bookedOut = Number(w.booked_out_cash) || 0;
             if (bookedOut > 0 && !isRoundTrip) {
-                const diff = bookedOut - perSeat;
+                // Compare the seat that was bought with the same airline today,
+                // not with whatever happens to be cheapest: a $157 Frontier fare
+                // via Las Vegas says nothing about a United nonstop at $159.
+                const carrier = String(w.booked_out_carrier || '').trim().toLowerCase();
+                const same = carrier ? outOpts.find((o) => String(o.airline || '').toLowerCase().includes(carrier)) : null;
+                const todaySame = same ? Number(same.price_per_person) : perSeat;
+                const diff = bookedOut - todaySame;
+                const who = same ? `${same.airline}${same.flight_numbers ? ' ' + same.flight_numbers : ''}` : 'the same trip';
                 card.appendChild(el('div', { style: { color: diff > 0 ? GOOD : INK, fontSize: '13px', marginTop: '6px', lineHeight: '1.5' } }, [
                     diff > 0
-                        ? `You booked the outbound at ${money(bookedOut)} per person. Today is ${money(diff)} cheaper per person${pax > 1 ? ` (${money(diff * pax)} for ${pax})` : ''}. Rebook only if the airline's change fee is less than that.`
-                        : `You booked the outbound at ${money(bookedOut)} per person. Today's fare is ${diff < 0 ? money(-diff) + ' higher' : 'the same'}, so your booking stands.`
+                        ? `You booked the outbound at ${money(bookedOut)} per person. ${who} is ${money(diff)} cheaper today${pax > 1 ? ` (${money(diff * pax)} for ${pax})` : ''}. Rebook only if the change fee is less than that.`
+                        : `You booked the outbound at ${money(bookedOut)} per person. ${who} is ${diff < 0 ? money(-diff) + ' more' : 'the same'} today, so your booking stands.`
                 ]));
             }
 
@@ -395,25 +430,33 @@ export async function mountTravel(root) {
             }));
 
             // The return leg is priced on its own (one way back), when watched.
-            const latestRet = retPrices.length ? retPrices[retPrices.length - 1] : null;
+            // The headline is the cheapest itinerary that actually works: it
+            // fits the preferences, leaves after the last event could be over,
+            // and does not sit in a hub for half a day.
+            const latestRet = retPick || (retPrices.length ? retPrices[retPrices.length - 1] : null);
             if (isRoundTrip && latest.ret_depart_at) {
                 card.appendChild(legBlock('Return', w.destination, latest.origin, latest.ret_depart_at, latest.ret_arrive_at, {
                     fromHome: false, layovers: [], maxLayover: 0, stopText, airline: latest.airline
                 }));
             } else if (latestRet) {
+                const retPP = latestRet.price_per_person != null ? Number(latestRet.price_per_person) : Number(latestRet.price) / pax;
+                const retDate = latestRet.depart_date || latestRet.searched_depart_date;
                 const rs = typeof latestRet.stops === 'number' ? (latestRet.stops === 0 ? 'nonstop' : `${latestRet.stops} stop${latestRet.stops === 1 ? '' : 's'}`) : null;
                 const retSeen = new Date(latestRet.observed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
                 card.appendChild(el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginTop: '12px' } }, [
-                    el('span', { style: { color: INK, fontSize: '22px', fontWeight: '700', fontFamily: 'var(--mono)' } }, [money(Number(latestRet.price) / pax)]),
-                    el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [`per person ${MID} return ${MID} ${w.destination} ${ARROW} ${latestRet.origin || originList[0]} ${MID} ${fmtDate(latestRet.searched_depart_date)} ${MID} checked ${retSeen}`])
+                    el('span', { style: { color: INK, fontSize: '22px', fontWeight: '700', fontFamily: 'var(--mono)' } }, [money(retPP)]),
+                    el('span', { style: { color: INK_MUTE, fontSize: '13px' } }, [`per person ${MID} return ${MID} ${w.destination} ${ARROW} ${latestRet.origin || originList[0]} ${MID} ${fmtDate(retDate)} ${MID} checked ${retSeen}`])
                 ]));
                 card.appendChild(legBlock('Return', w.destination, latestRet.origin, latestRet.depart_at, latestRet.arrive_at, {
                     fromHome: false, layovers: Array.isArray(latestRet.layovers) ? latestRet.layovers : [], durationMinutes: latestRet.duration_minutes,
                     maxLayover: Number(latestRet.max_layover_minutes) || 0, stopText: rs, airline: latestRet.airline, flightNumbers: latestRet.flight_numbers
                 }));
+                if (retPick && whyNot(retPick)) {
+                    card.appendChild(el('div', { style: { color: WARN, fontSize: '12px', marginTop: '4px', fontWeight: '600' } }, [`No return fits yet ${EMD} this is the cheapest seen, but ${whyNot(retPick)}.`]));
+                }
                 const paidRet = Number(w.booked_ret_cash) || 0;
                 if (paidRet > 0) {
-                    const d = paidRet - Number(latestRet.price) / pax;
+                    const d = paidRet - retPP;
                     card.appendChild(el('div', { style: { color: d > 0 ? GOOD : INK, fontSize: '13px', marginTop: '6px' } }, [
                         d > 0 ? `You booked the return at ${money(paidRet)} per person. Today is ${money(d)} cheaper.` : `You booked the return at ${money(paidRet)} per person. Today is not cheaper.`
                     ]));
@@ -427,20 +470,12 @@ export async function mountTravel(root) {
             }
 
             // The real choices from the latest check: every itinerary seen for
-            // each leg, the ones that fit the family's stops and hours first,
-            // the rest in grey. Each line opens the same search on Google Flights.
-            const offers = w.flight_offers || [];
-            const offerDay = (o) => String(o.observed_at).slice(0, 10);
-            const legOffers = (leg) => {
-                const rows = offers.filter((o) => o.leg === leg);
-                if (!rows.length) return [];
-                const day = rows.map(offerDay).sort().pop();
-                return rows.filter((o) => offerDay(o) === day)
-                    .sort((a, b) => (Number(b.fits !== false) - Number(a.fits !== false)) || (Number(a.price_per_person) - Number(b.price_per_person)));
-            };
+            // each leg, the ones that work first, the rest in grey with the
+            // reason. Each line opens the same search on Google Flights.
             const optionRow = (o) => {
                 const dep = parseLocal(o.depart_at), arr = parseLocal(o.arrive_at);
-                const ok = o.fits !== false;
+                const reason = whyNot(o);
+                const ok = !reason;
                 const stopsText = typeof o.stops === 'number' ? (o.stops === 0 ? 'nonstop' : `${o.stops} stop${o.stops === 1 ? '' : 's'}${o.max_layover_minutes ? `, ${hm(Number(o.max_layover_minutes))} layover` : ''}`) : null;
                 return el('a', {
                     href: o.booking_url || '#', target: '_blank', rel: 'noopener',
@@ -451,7 +486,7 @@ export async function mountTravel(root) {
                         `${dep ? clock(dep) : '?'} ${ARROW} ${arr ? clock(arr) : '?'}${arr && dep && arr.getDate() !== dep.getDate() ? ' next day' : ''}`,
                         el('br', {}),
                         el('span', { style: { color: INK_MUTE, fontSize: '12px' } }, [
-                            [o.airline, o.flight_numbers, stopsText, o.duration_minutes ? hm(Number(o.duration_minutes)) : null, ok ? null : 'outside your preferences'].filter(Boolean).join(` ${MID} `)
+                            [o.airline, o.flight_numbers, stopsText, o.duration_minutes ? hm(Number(o.duration_minutes)) : null, reason].filter(Boolean).join(` ${MID} `)
                         ])
                     ]),
                     el('span', { class: 'label', style: { color: INK_MUTE, textAlign: 'right' } }, [`${o.origin || ''} ${fmtDate(o.depart_date)}`.trim()])
@@ -461,7 +496,7 @@ export async function mountTravel(root) {
                 if (!rows.length) return null;
                 const wrap = el('div', { style: { marginTop: '14px' } });
                 wrap.appendChild(el('div', { class: 'kicker', style: { color: INK_MUTE } }, [title]));
-                const fitRows = rows.filter((o) => o.fits !== false);
+                const fitRows = rows.filter((o) => !whyNot(o));
                 const shown = (fitRows.length ? fitRows : rows).slice(0, 6);
                 for (const o of shown) wrap.appendChild(optionRow(o));
                 const rest = rows.filter((o) => !shown.includes(o));
@@ -478,7 +513,6 @@ export async function mountTravel(root) {
                 w.return_after ? `back after ${String(w.return_after).slice(0, 5)}` : null,
                 w.return_before ? `back before ${String(w.return_before).slice(0, 5)}` : null
             ].filter(Boolean);
-            const outOpts = legOffers('out'), retOpts = legOffers('ret');
             if (outOpts.length || retOpts.length) {
                 card.appendChild(el('div', { style: { color: INK_MUTE, fontSize: '12px', marginTop: '14px', lineHeight: '1.5' } }, [
                     `Options from the latest check, per person, one seat${prefBits.length ? `. Your preferences: ${prefBits.join(', ')}` : ''}. Change them under Edit.`
@@ -495,13 +529,20 @@ export async function mountTravel(root) {
                     : `Lowest seen: ${money(min / pax)} per person on ${lowDay}. Today is ${money((cur - min) / pax)} above it.`
             ]));
             if (w.target_price) {
-                const targetShapeOk = isRoundTrip || Number(w.target_price) < 250;
+                // The alert is a round-trip number per person. With the return
+                // priced on its own, the comparison is out plus the return that
+                // works; with only the outbound priced, say so.
+                const retWorks = retPick && !whyNot(retPick) ? Number(retPick.price_per_person) : null;
+                const tripSeat = isRoundTrip ? perSeat : (retWorks != null ? perSeat + retWorks : null);
+                const under = tripSeat != null && tripSeat <= Number(w.target_price);
                 card.appendChild(el('div', {
-                    style: { color: hitTarget && targetShapeOk ? GOOD : INK_MUTE, fontSize: '13px', marginTop: '2px', fontWeight: hitTarget && targetShapeOk ? '600' : '400' }
+                    style: { color: under ? GOOD : INK_MUTE, fontSize: '13px', marginTop: '2px', fontWeight: under ? '600' : '400' }
                 }, [
-                    !targetShapeOk
-                        ? `Your alert is set at ${money(w.target_price)} per person for the round trip; only the outbound is priced now, so the two are not compared.`
-                        : hitTarget ? `At or below your ${money(w.target_price)} per person alert ${EMD} book it.` : `Alert set at ${money(w.target_price)} per person; today is ${money(perSeat - w.target_price)} above it.`
+                    tripSeat == null
+                        ? `Your alert is set at ${money(w.target_price)} per person for the round trip; the return is not priced yet, so the two are not compared.`
+                        : isRoundTrip
+                            ? (under ? `At or below your ${money(w.target_price)} per person alert ${EMD} book it.` : `Alert set at ${money(w.target_price)} per person; today is ${money(tripSeat - w.target_price)} above it.`)
+                            : `Out ${money(perSeat)} plus return ${money(retWorks)} is ${money(tripSeat)} per person, ${under ? `under your ${money(w.target_price)} alert.` : `${money(tripSeat - w.target_price)} above your ${money(w.target_price)} alert.`}`
                 ]));
             }
 

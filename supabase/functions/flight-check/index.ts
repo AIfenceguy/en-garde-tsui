@@ -25,6 +25,7 @@ const SERP = "https://serpapi.com/search";
 const DELAY_MS = 400;
 const MAX_SEARCHES_PER_RUN = 48;
 const OFFERS_KEPT = 8;
+const MAX_LAYOVER_MIN = 6 * 60;
 const TZ = "America/Los_Angeles";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -119,6 +120,12 @@ Deno.serve(async (req) => {
     const hotelRate = Number(w.hotel_nightly_rate) || 0;
     const earlyPen = Number(w.early_depart_penalty) || 0;
     const penalties = (w.origin_penalties && typeof w.origin_penalties === "object") ? w.origin_penalties : {};
+    // The competition's own constraint: on the last event's day the return
+    // must leave after the fencer could be finished.
+    const { data: tripRows } = await db.from("trip_overview").select("event_date,no_return_before").eq("watch_id", w.id).order("event_date");
+    const lastTrip = tripRows?.length ? tripRows[tripRows.length - 1] : null;
+    const noReturnBefore = lastTrip?.no_return_before ? String(lastTrip.no_return_before).slice(0, 5) : null;
+    const lastEventDate = lastTrip?.event_date ? String(lastTrip.event_date).slice(0, 10) : null;
 
     // ---- what to search ---------------------------------------------------
     let departDates = expandDates(w.depart_window_start, w.depart_window_end, w.depart_date);
@@ -171,7 +178,11 @@ Deno.serve(async (req) => {
         const t = hhmm(d.departAt);
         const timeOk = !t || ((!pref.after || t >= pref.after) && (!pref.before || t <= pref.before));
         const stopsOk = maxStops == null || d.stops <= maxStops;
-        return { ...d, fits: timeOk && stopsOk };
+        // Half a day in a hub is not a fare anyone wants, whatever it costs.
+        const layoverOk = (d.maxLayover ?? 0) <= MAX_LAYOVER_MIN;
+        // A return on the last event's day has to leave after the event could be over.
+        const eventOk = !(L.leg === "ret" && noReturnBefore && lastEventDate === date && t && t < noReturnBefore);
+        return { ...d, fits: timeOk && stopsOk && layoverOk && eventOk };
       }).sort((a, b) => (Number(b.fits) - Number(a.fits)) || (a.price - b.price));
       // Google prices the whole party at this adults count: a party total.
       const best = seen[0];
