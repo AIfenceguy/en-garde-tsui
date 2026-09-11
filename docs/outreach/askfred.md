@@ -10,6 +10,8 @@ republishes all 36 USA Fencing national points lists daily. Nobody publishes a p
 signs as a fencing parent. No app name is given; if they ask for one for the OAuth2 screen, the
 name and the HTTPS redirect address are decided then.
 
+**Sent 2026-09-10** by Ricky to support@askfred.net from the family Gmail. Reply expected in 1 to 2 business days.
+
 **After sending.** Keep the reply in this folder. Their written answer, with its conditions, is
 the permission. Build the reader on the club-use footing meanwhile and charge nobody until the
 answer for other clubs is in hand.
