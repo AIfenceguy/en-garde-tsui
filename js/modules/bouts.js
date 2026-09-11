@@ -15,6 +15,7 @@ import { boutDebrief, listCoachNotes } from '../lib/coach.js';
 import { getWeaknessDrills } from '../lib/weakness-drills.js';
 import { logDrillSession, tagToSlug } from '../lib/drill-mastery.js';
 import { loadLostBouts, renderLostBoutsCard, seedFromResult, recentResultOpponents, factsForName } from '../lib/lost-bouts.js';
+import { renderTaughtVsBeaten } from '../lib/taught-vs-beaten.js';
 
 const CONTEXT_OPTIONS = [
     { value: 'club_open', label: 'Club open fencing' },
@@ -64,6 +65,12 @@ export async function mountBoutsList(root) {
         const card = renderLostBoutsCard(profile, lost);
         if (card) root.appendChild(card);
     } catch (e) { console.warn('lost bouts skipped', e); }
+
+    // What beat him lately against what he was taught lately.
+    try {
+        const card = await renderTaughtVsBeaten(profile);
+        if (card) root.appendChild(card);
+    } catch (e) { console.warn('taught vs beaten skipped', e); }
 
     let bouts = [];
     try {

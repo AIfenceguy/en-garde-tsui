@@ -58,14 +58,19 @@ export async function renderPrivateLessonsTab(container) {
                 : [l.coach || 'Coach']),
             el('span', { class: 'card-meta' }, [fmtDate(l.date)])
         ]));
+        if (l.kind === 'scenario') card.appendChild(el('span', { class: 'chip on', style: { marginBottom: '8px', marginRight: '6px' } }, ['scenarios']));
         if (l.new_skill_introduced) card.appendChild(el('span', { class: 'chip on', style: { marginBottom: '8px' } }, ['new skill']));
         if (l.topics?.length) {
+            const HELD_SHORT = { fed: 'fed', resisted: 'resisted', bout: 'in a bout' };
             card.appendChild(el('div', { class: 'chips' }, l.topics.map((t) =>
                 el('span', { class: 'chip on' }, [
                     taxos.topicBySlug.get(t.topic_slug)?.label || t.topic_slug,
-                    el('span', { class: 'count', style: { fontFamily: 'var(--mono)', marginLeft: '6px', color: 'var(--cream-dim)', fontSize: '0.8rem' } }, [`${t.mastery_1_10 || '?'}/10`])
+                    el('span', { class: 'count', style: { fontFamily: 'var(--mono)', marginLeft: '6px', color: 'var(--cream-dim)', fontSize: '0.8rem' } }, [t.held ? HELD_SHORT[t.held] || t.held : `${t.mastery_1_10 || '?'}/10`])
                 ])
             )));
+            const failed = l.topics.filter((t) => t.failed);
+            if (failed.length) card.appendChild(el('div', { style: { marginTop: '8px', fontFamily: 'var(--serif)', fontSize: '14px', lineHeight: '1.5', color: 'var(--ink, #1A1D24)' } },
+                failed.map((t) => el('div', {}, [el('span', { style: { color: 'var(--ink-mute, #6B7280)' } }, [`${taxos.topicBySlug.get(t.topic_slug)?.label || t.topic_slug}: `]), t.failed]))));
         }
         if (l.coach_quote) {
             card.appendChild(el('blockquote', { style: { borderLeft: '2px solid var(--accent)', margin: '12px 0 0', paddingLeft: '12px', fontStyle: 'italic' } }, [l.coach_quote]));
@@ -228,17 +233,30 @@ export async function renderPrivateLessonsTab(container) {
         form.appendChild(topicDetails);
         const topicState = new Map((editing?.topics || []).map((t) => [t.topic_slug, t]));
 
+        // Where a topic holds, instead of a 1-10 (the review of 2026-09-11: 40
+        // ratings between the two boys, almost all 7 to 9, and the losses came
+        // from topics rated 9). Fed by the coach, against a resisting partner,
+        // or in a bout - and one line on what failed. The 1-10 is still stored,
+        // derived, for the older XP and milestone rules.
+        const HELD = [['fed', 'Fed by the coach'], ['resisted', 'Against resistance'], ['bout', 'In a bout']];
+        const HELD_MASTERY = { fed: 5, resisted: 7, bout: 9 };
         function renderTopicDetails(slugs) {
             topicDetails.innerHTML = '';
             for (const slug of slugs) {
-                const cur = topicState.get(slug) || { topic_slug: slug, mastery_1_10: 5, application_notes: '' };
+                const cur = topicState.get(slug) || { topic_slug: slug, held: 'fed', mastery_1_10: 5, failed: '', application_notes: '' };
+                if (!cur.held) cur.held = (cur.mastery_1_10 || 0) >= 9 ? 'bout' : (cur.mastery_1_10 || 0) >= 7 ? 'resisted' : 'fed';
                 topicState.set(slug, cur);
-                const masteryInput = el('input', { type: 'range', min: 1, max: 10, value: cur.mastery_1_10, oninput: (e) => { cur.mastery_1_10 = Number(e.target.value); val.textContent = e.target.value; } });
-                const val = el('span', { class: 'scale-value' }, [String(cur.mastery_1_10)]);
-                const notes = el('input', { type: 'text', placeholder: 'where in a bout would I use this?', value: cur.application_notes, onchange: (e) => { cur.application_notes = e.target.value.trim(); } });
+                const seg = el('div', { class: 'chips' }, HELD.map(([v, label]) => el('button', {
+                    type: 'button', class: 'chip' + (cur.held === v ? ' on is-on' : ''), 'aria-pressed': String(cur.held === v),
+                    onclick: () => { cur.held = v; cur.mastery_1_10 = HELD_MASTERY[v]; renderTopicDetails(slugs); }
+                }, [label])));
+                const failed = el('input', { type: 'text', placeholder: 'what failed, in a few words', value: cur.failed || '', required: true, onchange: (e) => { cur.failed = e.target.value.trim(); } });
+                const notes = el('input', { type: 'text', placeholder: 'where in a bout would I use this?', value: cur.application_notes || '', onchange: (e) => { cur.application_notes = e.target.value.trim(); } });
                 topicDetails.appendChild(el('div', { class: 'card', style: { padding: '12px', margin: '8px 0' } }, [
                     el('div', { class: 'kicker' }, [taxos.topicBySlug.get(slug)?.label || slug]),
-                    el('div', { class: 'scale' }, [masteryInput, val]),
+                    el('div', { class: 'label', style: { margin: '6px 0 4px' } }, ['Where does it hold?']),
+                    seg,
+                    el('div', { class: 'field', style: { marginTop: '8px' } }, [failed]),
                     el('div', { class: 'field', style: { marginTop: '8px' } }, [notes])
                 ]));
             }
@@ -246,8 +264,21 @@ export async function renderPrivateLessonsTab(container) {
         renderTopicDetails(Array.from(topicState.keys()));
         form._topicGroup.onChange = renderTopicDetails;
 
+        // Actions fed and repeated, or scenarios: what to do when the opponent
+        // does X. The scenario lessons carry the lowest ratings and answer the
+        // competition losses; the two kinds must be told apart.
+        let kind = editing?.kind || 'action';
+        const KINDS = [['action', 'Actions, fed and repeated'], ['scenario', 'Scenarios: when the opponent does X']];
+        const kindChips = el('div', { class: 'chips' });
+        function renderKind() {
+            kindChips.innerHTML = '';
+            for (const [v, label] of KINDS) kindChips.appendChild(el('button', { type: 'button', class: 'chip' + (kind === v ? ' on is-on' : ''), 'aria-pressed': String(kind === v), onclick: () => { kind = v; renderKind(); } }, [label]));
+        }
+        renderKind();
+        form.appendChild(el('div', { class: 'field' }, [el('label', {}, ['Kind of lesson']), kindChips]));
+
         const newSkill = el('input', { type: 'checkbox', checked: !!editing?.new_skill_introduced });
-        form.appendChild(el('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', textTransform: 'none', letterSpacing: 'normal', fontFamily: 'var(--serif)', color: 'var(--cream)', marginBottom: '12px' } }, [newSkill, 'New skill introduced today']));
+        form.appendChild(el('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', textTransform: 'none', letterSpacing: 'normal', fontFamily: 'var(--serif)', color: 'var(--cream)', marginBottom: '12px' } }, [newSkill, 'New skill introduced today (a move he had not done before)']));
 
         form.appendChild(el('div', { class: 'field' }, [el('label', {}, ['Coach\'s key quote']), el('input', { type: 'text', name: 'coach_quote', value: editing?.coach_quote || '' })]));
         form.appendChild(el('div', { class: 'field' }, [el('label', {}, ['Practice plan']), el('textarea', { name: 'practice_plan' }, [editing?.practice_plan || ''])]));
@@ -267,6 +298,7 @@ export async function renderPrivateLessonsTab(container) {
                 coach: coach.getValue(),
                 duration_min: fd.get('duration_min') ? Number(fd.get('duration_min')) : null,
                 topics,
+                kind,
                 new_skill_introduced: !!newSkill.checked,
                 practice_plan: (fd.get('practice_plan') || '').toString().trim() || null,
                 coach_quote: (fd.get('coach_quote') || '').toString().trim() || null
