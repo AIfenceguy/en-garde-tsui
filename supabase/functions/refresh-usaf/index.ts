@@ -260,7 +260,9 @@ const flagCountry = (s: string): string | null => {
   return cps.length === 2 ? String.fromCharCode(...cps.map((cp) => cp - 0x1F1E6 + 65)) : null;
 };
 function parseEntrantsTable(html: string): { total: number | null; rows: Entrant[] } {
-  const tm = /Total Entrants(?:\s|&nbsp;)*(\d+)/i.exec(html);
+  // The header carries tags between the words and the number; read it from
+  // the tag-stripped text of the top of the table.
+  const tm = /Total Entrants\s*(\d+)/i.exec(strip(html.slice(0, 4000)));
   const total = tm ? Number(tm[1]) : null;
   const rows: Entrant[] = [];
   for (const m of html.matchAll(/<tr\s+data-club="([^"]*)"\s+data-division="([^"]*)"[^>]*>([\s\S]*?)<\/tr>/gi)) {
