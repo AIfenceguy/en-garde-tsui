@@ -49,6 +49,11 @@ const MAX_TOURNAMENTS = 12;
 const LIST_CODE = /^(Y10|Y12|Y14|CDT|JNR)[MW]F$/i;
 const MAX_LISTS = 30;
 const LIST_MAX_AGE_MS = 3 * 86400000;
+// A call stops taking on new reads after this long, so it always answers
+// inside the caller's 150 s (the 45-day pass of 2026-09-11 timed out at the
+// caller while still reading). What is left waits for the next planned read.
+const TIME_BUDGET_MS = 100000;
+const UPCOMING_PER_CALL = 6;
 const UPCOMING_DAYS = 120;
 const CATS: Record<string, string> = { CADET: "cadet", JUNIOR: "junior", SENIOR: "senior", DIV1: "div1", VETERAN: "vet", Y14: "y14", Y12: "y12", Y10: "y10" };
 const YOUTH = new Set(["Y10", "Y12", "Y14"]);
@@ -426,14 +431,17 @@ Deno.serve(async (req) => {
   if (!tournamentIds.length && body.upcoming) {
     const until = new Date(Date.now() + (Number(body.days) || UPCOMING_DAYS) * 86400000).toISOString().slice(0, 10);
     const { data: up } = await db.from("usaf_tournaments").select("tournament_id,details_read_at").in("scope", ["national", "regional"])
-      .gte("start_date", today).lte("start_date", until).order("details_read_at", { ascending: true, nullsFirst: true }).limit(MAX_TOURNAMENTS);
+      .gte("start_date", today).lte("start_date", until).order("details_read_at", { ascending: true, nullsFirst: true }).limit(UPCOMING_PER_CALL);
     tournamentIds = (up || []).map((t) => Number(t.tournament_id));
     if (!tournamentIds.length) return json({ tournaments: [], note: "nothing listed inside the window" });
   }
   if (tournamentIds.length) {
     const done: Record<string, unknown>[] = [];
+    const started = Date.now();
+    const overBudget = () => Date.now() - started > TIME_BUDGET_MS;
     for (let i = 0; i < tournamentIds.length; i++) {
       const id = tournamentIds[i];
+      if (overBudget()) { done.push({ tournament_id: id, skipped: "time budget; next planned read" }); continue; }
       try {
         const r = await fetch(`${HOST}/details/tournaments/${id}`, { headers: { "User-Agent": UA, "Accept": "text/html" } });
         if (!r.ok) { done.push({ tournament_id: id, error: `USA Fencing answered ${r.status}` }); continue; }
@@ -465,7 +473,7 @@ Deno.serve(async (req) => {
             const stale = !h?.entrants_read_at || (Date.now() - Date.parse(h.entrants_read_at)) > LIST_MAX_AGE_MS;
             const changed = h?.entrants_listed == null || count == null || Number(count) !== Number(h.entrants_listed);
             if (!stale && !changed) { lists.push({ code: e.code, event_id: e.event_id, held: h?.entrants_listed, skipped: "unchanged" }); continue; }
-            if (reads >= MAX_LISTS) { lists.push({ code: e.code, event_id: e.event_id, skipped: "call budget" }); continue; }
+            if (reads >= MAX_LISTS || overBudget()) { lists.push({ code: e.code, event_id: e.event_id, skipped: "call budget; next planned read" }); continue; }
             await sleep(DELAY_MS); reads += 1;
             try {
               const lr = await fetch(`${HOST}/details/tournaments/${id}/entrants?event_id=${e.event_id}`, { headers: { "User-Agent": UA, "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" } });
