@@ -884,7 +884,7 @@ function eventRow(e, i, ctx, refreshed, group) {
     const row = el('div', { style: { padding: '12px 0', borderTop: i === 0 ? '1px solid var(--rule)' : '1px solid var(--rule)', display: 'grid', gridTemplateColumns: '1fr', gap: '6px' } });
     row.appendChild(el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' } }, [
         el('div', { style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '600', fontSize: '19px', color: INK } }, [e.tournament]),
-        el('span', { class: 'label', style: { color: INK_MUTE } }, [`${catLabel(e.category)} · ${tierLabel(e.tier)} · ${fmtRange(e.start_date, e.end_date)}${p.live ? ' · live' : ''}`])
+        el('span', { class: 'label', style: { color: INK_MUTE } }, [`${catLabel(e.category)} · ${tierLabel(e.tier)} · ${fmtRange(e.start_date, e.end_date)}`])
     ]));
     const travelWord = e.travel === 'local' ? 'drive, no hotel' : e.travel === 'drive' ? 'drive' : e.travel === 'fly' ? 'fly' : '';
     row.appendChild(el('div', { class: 'label', style: { color: INK_MUTE } }, [[e.city, e.venue, travelWord].filter(Boolean).join(' · ') || 'City not set']));
@@ -1310,7 +1310,7 @@ function howToRead(profile, sibling) {
     return el('section', { class: 'card', style: { margin: '0 var(--gut) 18px' } }, [
         label('How to read the plan'),
         el('p', { style: { color: INK, fontSize: '13px', margin: '6px 0 0', lineHeight: '1.55' } }, [
-            el('b', {}, ['Field']), ' is who is registered. Events marked live were read on demand; the rest use the nightly snapshot. ',
+            el('b', {}, ['Field']), ' is who is registered, from our copy of the entry lists, brought up to date each morning in the weeks before an event. ',
             el('b', {}, ['Seed']), ' is his place in that field on form strength, official seed in brackets; ', el('b', {}, ['by pools']), ' is where his pool strength would draw him. ',
             el('b', {}, ['Expected']), ' is the median finish of a simulated bracket. ',
             el('b', {}, ['Points']), ' are national points for that finish under the 2026-27 tables, weighted by how likely each finish is. ',
