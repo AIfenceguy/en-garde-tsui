@@ -29,12 +29,19 @@ export async function render() {
     document.querySelectorAll('.bottom-nav a').forEach((a) => {
         a.classList.toggle('active', a.dataset.route === name || a.dataset.route === name.split('/')[0]);
     });
-    _root.innerHTML = '';
+    // Each navigation renders into its own container. A screen that is still
+    // loading when the user moves on keeps appending into a node that is no
+    // longer in the page, instead of into the next screen (the Travel cards
+    // turned up inside Settings, 2026-09-12).
+    const view = document.createElement('div');
+    view.className = 'view';
+    _root.replaceChildren(view);
     try {
-        await fn(_root, params);
+        await fn(view, params);
     } catch (err) {
         console.error('[router] render error', err);
-        _root.innerHTML = `<div class="card">
+        if (!view.isConnected) return;
+        view.innerHTML = `<div class="card">
             <h3 style="color:var(--danger)">Something went wrong rendering this view.</h3>
             <pre class="mono dim" style="white-space:pre-wrap">${(err && err.message) || err}</pre>
         </div>`;

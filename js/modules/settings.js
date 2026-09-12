@@ -4,7 +4,7 @@
 
 import { el, toast } from '../lib/util.js';
 import { supa } from '../lib/supa.js';
-import { getState } from '../lib/state.js';
+import { getState, activeProfile } from '../lib/state.js';
 import { isParent, loadVisibility } from '../lib/visibility.js';
 
 const INK = 'var(--ink)';
@@ -13,9 +13,14 @@ const INK_MUTE = '#6B7280';
 const GOOD = '#1f7a1f';
 
 export async function mountSettings(root) {
+    // What Settings shows follows the profile being viewed (Ricky, 2026-09-12):
+    // under a fencer, that fencer's own details and login; under the Parent
+    // profile, the household: what the kids can see, the logins, every fencer.
+    const active = activeProfile();
+    const fencerView = active?.kind === 'fencer';
     root.appendChild(el('div', { style: { padding: '40px var(--gut) 8px' } }, [
         el('h1', { class: 'page-eyebrow' }, ['Settings']),
-        el('div', { class: 'today-sub' }, [el('span', {}, ['PARENT'])])
+        el('div', { class: 'today-sub' }, [el('span', {}, [(active?.name || 'Parent').toUpperCase()])])
     ]));
     if (!isParent()) {
         root.appendChild(el('div', { class: 'empty' }, [el('p', { class: 'empty-line' }, ['Settings are for the parent login.'])]));
@@ -31,6 +36,15 @@ export async function mountSettings(root) {
     ]);
     const logins = whoRes?.data?.logins || {};
     for (const p of profiles || []) p.login_email = logins[p.id]?.email || null;
+
+    if (fencerView) {
+        const mine = (profiles || []).filter((p) => p.id === active.id);
+        root.appendChild(fencersCard(session, mine, { single: true }));
+        root.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '13px', margin: '0 var(--gut) 18px', lineHeight: '1.5' } }, [
+            'Home, hotel estimate, what the kids can see, and the other fencers are under the Parent profile.'
+        ]));
+        return;
+    }
 
     // --- What the kids can see -------------------------------------------
     const card = el('section', { class: 'card', style: { margin: '0 var(--gut) 18px' } });
@@ -84,12 +98,12 @@ export async function mountSettings(root) {
 }
 
 // --- Fencers on the account: add one, fix his details, give him a login ----
-function fencersCard(session, profiles) {
+function fencersCard(session, profiles, opts = {}) {
     const card = el('section', { class: 'card', style: { margin: '0 var(--gut) 18px' } });
-    card.appendChild(el('div', { class: 'label', style: { color: INK_MUTE } }, ['Fencers']));
-    card.appendChild(el('div', { style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '700', fontSize: '24px', color: INK, margin: '4px 0 6px' } }, ['Who is on the account']));
+    card.appendChild(el('div', { class: 'label', style: { color: INK_MUTE } }, [opts.single ? 'This fencer' : 'Fencers']));
+    card.appendChild(el('div', { style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '700', fontSize: '24px', color: INK, margin: '4px 0 6px' } }, [opts.single ? (profiles[0]?.name || 'Fencer') : 'Who is on the account']));
     card.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '13px', margin: '0 0 8px', lineHeight: '1.5' } }, [
-        'Birth year sets the categories and the plan. The USA Fencing id is matched from the standings by name and birth year when you read them; the results profile link lets the app read entry lists and bouts.'
+        'Birth year sets the categories and the plan. The USA Fencing member number keys his results, bouts and entry lists; the internal id is matched from the standings by name and birth year.'
     ]));
     const field = (labelText, input) => el('div', { class: 'field', style: { marginBottom: '6px' } }, [el('label', { class: 'field-label' }, [labelText]), input]);
     const fencers = profiles.filter((p) => p.kind === 'fencer');
@@ -100,15 +114,14 @@ function fencersCard(session, profiles) {
         // The number on the USA Fencing membership card (100xxxxxx). The
         // portal's internal user id is matched automatically and never typed.
         const usaf = el('input', { type: 'text', class: 'field-input', value: p.usaf_member_id || '', placeholder: 'on the membership card, e.g. 100280844', inputmode: 'numeric' });
-        const tracker = el('input', { type: 'text', class: 'field-input', value: p.tracker_url || (p.tracker_id ? `https://fencingtracker.com/p/${p.tracker_id}/x` : ''), placeholder: 'results profile link (optional)' });
         box.appendChild(el('div', { style: { color: INK, fontSize: '15px', fontWeight: '600', marginBottom: '6px' } }, [p.name, el('span', { class: 'label', style: { color: p.login_user_id ? GOOD : INK_MUTE, marginLeft: '10px' } }, [p.login_user_id ? 'has a login' : 'no login yet'])]));
-        box.appendChild(field('Name', name)); box.appendChild(field('Born', by)); box.appendChild(field('USA Fencing member number', usaf)); box.appendChild(field('Results profile link', tracker));
+        box.appendChild(field('Name', name)); box.appendChild(field('Born', by)); box.appendChild(field('USA Fencing member number', usaf));
         const save = el('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-mono-label' }, ['Save']);
         save.onclick = async () => {
             save.disabled = true;
-            const m = String(tracker.value).match(/\/p\/(\d{6,10})/);
+            // The member number is also the key of his record in our copy.
             const memberNo = String(usaf.value || '').replace(/\D/g, '') || null;
-            const { error } = await supa.from('profiles').update({ name: name.value.trim() || p.name, birth_year: Number(by.value) || null, usaf_member_id: memberNo, tracker_url: tracker.value.trim() || null, tracker_id: m ? m[1] : p.tracker_id }).eq('id', p.id);
+            const { error } = await supa.from('profiles').update({ name: name.value.trim() || p.name, birth_year: Number(by.value) || null, usaf_member_id: memberNo, tracker_id: memberNo ? Number(memberNo) : p.tracker_id, tracker_url: null }).eq('id', p.id);
             save.disabled = false;
             if (error) { toast('Could not save: ' + error.message, 'error'); return; }
             toast('Saved'); location.reload();
@@ -151,26 +164,27 @@ function fencersCard(session, profiles) {
         box.appendChild(row);
         card.appendChild(box);
     }
+    if (opts.single) return card;
     // Add a fencer.
     const add = el('div', { style: { padding: '12px 0 4px', borderTop: '1px solid var(--rule)' } });
     add.appendChild(el('div', { class: 'label', style: { color: INK_MUTE, marginBottom: '6px' } }, ['Add a fencer']));
     const nName = el('input', { type: 'text', class: 'field-input', placeholder: 'First name' });
     const nBy = el('input', { type: 'number', class: 'field-input', placeholder: 'Birth year', min: '2005', max: '2020' });
-    const nTracker = el('input', { type: 'text', class: 'field-input', placeholder: 'results profile link (optional)' });
+    const nMember = el('input', { type: 'text', class: 'field-input', placeholder: 'USA Fencing member number (optional)', inputmode: 'numeric' });
     const nBtn = el('button', { type: 'button', class: 'btn btn-primary btn-sm btn-mono-label', style: { marginTop: '6px' } }, ['Add']);
     nBtn.onclick = async () => {
         const nm = nName.value.trim(), b = Number(nBy.value);
         if (!nm || !b) { toast('Name and birth year', 'error'); return; }
         nBtn.disabled = true;
-        const m = String(nTracker.value).match(/\/p\/(\d{6,10})/);
+        const memberNo = String(nMember.value || '').replace(/\D/g, '') || null;
         const role = nm.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'fencer';
-        const { data: f, error } = await supa.from('profiles').insert({ owner_user_id: session.user.id, name: nm, role, kind: 'fencer', birth_year: b, primary_weapon: 'foil', accent_hex: '#d4af37', tracker_id: m ? m[1] : null, tracker_url: m ? nTracker.value.trim() : null }).select().single();
+        const { data: f, error } = await supa.from('profiles').insert({ owner_user_id: session.user.id, name: nm, role, kind: 'fencer', birth_year: b, primary_weapon: 'foil', accent_hex: '#d4af37', usaf_member_id: memberNo, tracker_id: memberNo ? Number(memberNo) : null, tracker_url: null }).select().single();
         if (error) { nBtn.disabled = false; toast('Could not add: ' + error.message, 'error'); return; }
         const cat = b >= 2016 ? 'y10' : b >= 2014 ? 'y12' : b >= 2012 ? 'y14' : b >= 2010 ? 'cadet' : 'junior';
         await supa.from('fencer_goals').upsert({ profile_id: f.id, season: '2026-27', focus_category: cat, secondary: [], ride_along: [], pressure: 'development', updated_at: new Date().toISOString() });
         toast(`${nm} added`); location.reload();
     };
-    add.appendChild(field('Name', nName)); add.appendChild(field('Born', nBy)); add.appendChild(field('Results profile link', nTracker)); add.appendChild(nBtn);
+    add.appendChild(field('Name', nName)); add.appendChild(field('Born', nBy)); add.appendChild(field('USA Fencing member number', nMember)); add.appendChild(nBtn);
     card.appendChild(add);
     return card;
 }
