@@ -211,6 +211,7 @@ export async function mountSeason(root) {
         });
     }
     await applyLiveForecasts(events, refreshed, profile, myForm);
+    await applyOfficialEntrants(events);
     events = events.filter((e) => e.projections[profile.name]).sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)));
 
     // Cost per trip (this fencer's own days at that tournament), then intentions.
@@ -586,17 +587,23 @@ const rankKey = (s) => {
 function eliteBubble(e, ctx) {
     if (e.category !== 'cadet' || !(e.tier === 'nac' || e.tier === 'jo')) return null;
     const rows = ctx.rankings?.cadet || [];
-    const names = e.entrant_names || [];
+    // The official entry list first; the older read of the field only without it.
+    const official = e.official_entrants || null;
+    const names = official ? official.map((x) => x.name) : (e.entrant_names || []);
     const myRank = ctx.standing?.cadet?.rank;
     if (!rows.length || !names.length || !myRank) return null;
     const entered = new Set(names.map(rankKey));
     const above = rows.filter((r) => r.rank < myRank && entered.has(rankKey(r.name))).length;
     const pos = above + 1, cap = 112, n = names.length;
-    const asOf = rows[0]?.as_of ? new Date(rows[0].as_of + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'today';
-    if (n < 169) return { text: `${n} entered: below 169 there is one bracket, no Elite and Challenger.`, tone: INK_MUTE };
+    const short = (s, t) => s ? new Date(t ? s : String(s).slice(0, 10) + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'today';
+    const asOf = short(rows[0]?.as_of, false);
+    const listOf = official ? `the official entry list of ${short(e.entrants_official_at, true)}` : 'the entry list read';
+    const me = official && ctx.profile?.usaf_member_id ? official.some((x) => String(x.member_id) === String(ctx.profile.usaf_member_id)) : null;
+    const notIn = me === false ? ' He is not on that list yet.' : '';
+    if (n < 169) return { text: `${n} entered on ${listOf}: below 169 there is one bracket, no Elite and Challenger.${notIn}`, tone: INK_MUTE };
     const split = new Date(new Date(String(e.start_date).slice(0, 10) + 'T00:00:00').getTime() - 14 * 864e5).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    if (pos <= cap) return { text: `Elite on the Cadet ranking of ${asOf}: ${ordinal(pos)} of ${n} entered, ${cap - pos} place${cap - pos === 1 ? '' : 's'} inside the line of ${cap}. The split is made about ${split}.`, tone: GOOD };
-    return { text: `Challenger on the Cadet ranking of ${asOf}: ${ordinal(pos)} of ${n} entered, ${pos - cap} place${pos - cap === 1 ? '' : 's'} outside the Elite line of ${cap}. The split is made about ${split}; results posted before then move the line, and a Challenger fencer who opts in moves up when an Elite spot opens.`, tone: WARN };
+    if (pos <= cap) return { text: `Elite on the Cadet ranking of ${asOf} against ${listOf}: ${ordinal(pos)} of ${n} entered, ${cap - pos} place${cap - pos === 1 ? '' : 's'} inside the line of ${cap}. The split is made about ${split}.${notIn}`, tone: GOOD };
+    return { text: `Challenger on the Cadet ranking of ${asOf} against ${listOf}: ${ordinal(pos)} of ${n} entered, ${pos - cap} place${pos - cap === 1 ? '' : 's'} outside the Elite line of ${cap}. The split is made about ${split}; results posted before then move the line, and a Challenger fencer who opts in moves up when an Elite spot opens.${notIn}`, tone: WARN };
 }
 // Does this event feed the ranking for `cat`?
 function feeds(e, cat) {
@@ -1004,6 +1011,33 @@ async function applyLiveForecasts(events, refreshed, profile, myForm) {
         e.projections[profile.name] = { ...(e.projections[profile.name] || {}), ...f, pending: false };
         e.entrants = list.length;
         e.refreshed_at = refreshed.get(Number(e.ft_event_id))?.last_refreshed_at;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The official entry lists USA Fencing publishes per event (usaf_entrants,
+// read daily by refresh-usaf, keyed by the event's USA Fencing id). Names and
+// count come from the page's own total; when a list is complete it takes
+// precedence over any other read of the field. An incomplete list is left
+// alone rather than shown short.
+// ---------------------------------------------------------------------------
+async function applyOfficialEntrants(events) {
+    const ids = [...new Set(events.map((e) => Number(e.usaf_event_id)).filter(Boolean))];
+    if (!ids.length) return;
+    const { data: ev } = await supa.from('usaf_events').select('event_id,entrants_listed,entrants_read_at').in('event_id', ids).not('entrants_read_at', 'is', null);
+    const listed = new Map((ev || []).map((x) => [Number(x.event_id), x]));
+    if (!listed.size) return;
+    const { data: rows } = await supa.from('usaf_entrants').select('event_id,member_id,name,rating,club').in('event_id', [...listed.keys()]);
+    const byEvent = new Map();
+    for (const r of rows || []) { const k = Number(r.event_id); if (!byEvent.has(k)) byEvent.set(k, []); byEvent.get(k).push(r); }
+    for (const e of events) {
+        const k = Number(e.usaf_event_id);
+        const meta = listed.get(k), list = byEvent.get(k);
+        if (!meta || !list || list.length !== Number(meta.entrants_listed)) continue;
+        e.official_entrants = list;
+        e.entrant_names = list.map((x) => x.name);
+        e.entrants = list.length;
+        e.entrants_official_at = meta.entrants_read_at;
     }
 }
 
