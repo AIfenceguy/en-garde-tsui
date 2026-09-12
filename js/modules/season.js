@@ -236,7 +236,11 @@ export async function mountSeason(root) {
     const { data: rankRows } = await supa.from('usaf_rankings').select('rank,name,points,as_of').eq('category', 'cadet').order('as_of', { ascending: false }).order('rank');
     const latestAsOf = rankRows?.[0]?.as_of;
     const rankings = { cadet: (rankRows || []).filter((r) => r.as_of === latestAsOf) };
-    const ctx = { profile, sibling, siblingGoals, goals, ts90: ts[90], primary: goals.focus_category || primaryCategory(profile.birth_year), watches, latestPrice, events, sycKeep: new Set(), marks, standing, registered, decision, rankings };
+    // This week's training plan and its check-ins: the week of an event, a
+    // plan nobody ticked is worth a line on the weekend card.
+    const monday = new Date(); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    const { data: planRows } = await supa.from('training_plan').select('week_start,area,title,target_n,checkins').eq('profile_id', profile.id).eq('week_start', monday.toISOString().slice(0, 10));
+    const ctx = { profile, sibling, siblingGoals, goals, ts90: ts[90], primary: goals.focus_category || primaryCategory(profile.birth_year), watches, latestPrice, events, sycKeep: new Set(), marks, standing, registered, decision, rankings, plans: planRows || [] };
     for (const e of events) e.cost = tripCost(e, ctx);
     // One SYC counts per youth category: keep the best and one backup as
     // value; the rest are insurance at best. The family's rule narrows the
@@ -279,7 +283,11 @@ export async function mountSeason(root) {
     body.appendChild(await peersCard(profile, events));
     body.appendChild(howToRead(profile, sibling));
     if (PARENT) body.appendChild(usafCard(ctx));
-    body.appendChild(recentBouts(boutRes.data || [], profile));
+    // Our own rating for him and for each opponent in the list.
+    const oppIds = [...new Set((boutRes.data || []).map((b) => Number(b.opponent_tracker_id)).filter(Boolean))];
+    if (profile.tracker_id) oppIds.push(Number(profile.tracker_id));
+    const { data: ownRows } = oppIds.length ? await supa.from('own_ratings').select('tracker_id,rating,sd,bouts').in('tracker_id', oppIds) : { data: [] };
+    body.appendChild(recentBouts(boutRes.data || [], profile, new Map((ownRows || []).map((r) => [Number(r.tracker_id), r]))));
 }
 
 // ---------------------------------------------------------------------------
@@ -646,6 +654,17 @@ function weekendsCard(key, title, sub, rows, ctx, refreshed) {
             el('div', { style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '700', fontSize: '20px', color: INK } }, [w.tournament]),
             el('span', { class: 'label', style: { color: INK_MUTE } }, [`${fmtRange(w.start, w.end)} · ${w.city || 'city not set'} · ${w.travel === 'fly' ? 'fly' : w.travel === 'drive' ? 'drive' : w.travel === 'local' ? 'day trip' : ''}`])
         ]));
+        // The week of the event: how much of this week's plan has been ticked.
+        const daysAway = Math.round((new Date(String(w.start).slice(0, 10)) - new Date(new Date().toISOString().slice(0, 10))) / 864e5);
+        if (daysAway >= 0 && daysAway <= 7 && ctx.plans.length) {
+            const target = ctx.plans.reduce((a, p) => a + (Number(p.target_n) || 0), 0);
+            const done = ctx.plans.reduce((a, p) => a + Math.min(Number(p.target_n) || 0, (p.checkins || []).length), 0);
+            card.appendChild(el('p', { style: { color: done === 0 ? WARN : done < target ? INK : GOOD, fontSize: '13px', margin: '2px 0 6px', lineHeight: '1.5', fontWeight: done === 0 ? '700' : '500' } }, [
+                done === 0
+                    ? `${daysAway === 0 ? 'Today' : `${daysAway} day${daysAway === 1 ? '' : 's'} out`} and this week's plan has no check-ins yet: ${ctx.plans.map((p) => p.title).join(' · ')}.`
+                    : `This week's plan: ${done} of ${target} check-ins done.`
+            ]));
+        }
         card.appendChild(el('div', { style: { display: 'flex', gap: '14px', flexWrap: 'wrap', margin: '6px 0 8px' } }, [
             ...(COSTS ? [
                 stat('Per person', cost.per_person > 0 ? money(cost.per_person) : '—', cost.live ? GOOD : INK),
@@ -1512,24 +1531,31 @@ function tripCost(e, ctx) {
     return c;
 }
 
-function recentBouts(bouts, profile) {
+// The number beside each opponent is our own rating for him (the
+// whole-history model over regional and national bouts), on the same scale
+// as the fencer's own number above. On that scale 400 points is ten-to-one
+// in a direct elimination, so 120 above is a clear favourite and 200 below
+// a clear underdog.
+function recentBouts(bouts, profile, ownBy = new Map()) {
     const wrap = el('section', { class: 'card', style: { margin: '0 var(--gut) 18px' } });
     wrap.appendChild(label('Recent bouts · from the results'));
     if (!bouts.length) { wrap.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '13px', margin: '6px 0 0' } }, ['No bouts loaded yet.'])); return wrap; }
     // A bout that says something is tagged in words, not in bold (Ricky,
     // 2026-09-12: bold names read as an inconsistency, not a signal).
     wrap.appendChild(el('p', { class: 'label', style: { color: INK_MUTE, margin: '2px 0 6px', textTransform: 'none', letterSpacing: 'normal' } }, [
-        'Opponent, his listed strength, the event. Upset: a win over a fencer listed 40 or more above him. Gave one away: a loss to one listed 100 or more below.'
+        'Opponent, our rating for him, the event. Upset: a win over a fencer rated 120 or more above him. Gave one away: a loss to one rated 200 or more below. A rating from fewer than twelve bouts is marked thin.'
     ]));
-    const off = profile.strength_de ?? 0;
+    const mine = ownBy.get(Number(profile.tracker_id))?.rating ?? null;
     bouts.forEach((b, i) => {
         const win = b.result === 'V';
-        const upset = win && b.opponent_strength > off + 40;
-        const bad = !win && b.opponent_strength < off - 100;
+        const o = ownBy.get(Number(b.opponent_tracker_id)) || null;
+        const upset = win && mine != null && o && o.rating >= mine + 120;
+        const bad = !win && mine != null && o && o.rating <= mine - 200;
+        const shown = o ? `${o.rating}${(o.bouts ?? 0) < 12 ? ' thin' : ''}` : '—';
         wrap.appendChild(el('div', { style: { display: 'grid', gridTemplateColumns: '62px 1fr auto', gap: '8px', padding: '7px 0', borderTop: i ? '1px solid var(--rule)' : 'none', alignItems: 'baseline' } }, [
             el('span', { class: 'label', style: { color: INK_MUTE } }, [String(b.bout_date).slice(5)]),
             el('span', { style: { color: INK, fontSize: '14px', fontWeight: '500' } }, [
-                `${b.opponent} `, el('span', { class: 'label', style: { color: INK_MUTE } }, [`${b.opponent_strength ?? '—'} · ${catLabel(b.category)}`]),
+                `${b.opponent} `, el('span', { class: 'label', style: { color: INK_MUTE } }, [`${shown} · ${catLabel(b.category)}`]),
                 upset ? el('span', { class: 'label', style: { color: GOOD, marginLeft: '8px' } }, ['upset']) : null,
                 bad ? el('span', { class: 'label', style: { color: WARN, marginLeft: '8px' } }, ['gave one away']) : null
             ]),

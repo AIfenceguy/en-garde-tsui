@@ -545,6 +545,15 @@ export async function mountVideos(root, params = {}) {
 
         async function save() {
             const fd = new FormData(form);
+            // Rote entries teach nothing: eight videos in a row once said the
+            // same "learned: flick". The same line as the last reflection is
+            // refused (lesson review, 2026-09-11).
+            const learnedNow = (fd.get('what_i_learned') || '').toString().trim().toLowerCase();
+            const previous = videos.find((v) => v.id !== editing?.id && v.what_i_learned);
+            if (learnedNow && previous && String(previous.what_i_learned).trim().toLowerCase() === learnedNow) {
+                toast('That is the same "what I learned" as your last video. Say what was different in this bout.', 'error');
+                return;
+            }
             const url = (fd.get('youtube_url') || '').toString().trim();
             const id = parseVideoId(url) || videoId;
 

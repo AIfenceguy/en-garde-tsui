@@ -74,7 +74,7 @@ export async function mountTrain(root) {
     const [progRes, drillRes, doneRes] = await Promise.all([
         supa.from('skill_progress').select('*').eq('profile_id', profile.id),
         supa.from('skill_drills').select('*').order('sort_order'),
-        supa.from('drill_sessions').select('drill_slug, created_at').eq('profile_id', profile.id)
+        supa.from('drill_sessions').select('drill_slug, created_at, reps').eq('profile_id', profile.id)
     ]);
 
     const progress = progRes.data || [];
@@ -96,10 +96,16 @@ export async function mountTrain(root) {
         drillsBySkill.get(d.skill_slug).push(d);
     }
     // Case-insensitive by default: slugs have arrived in mixed case before.
-    const doneCount = new Map();
+    // A session with reps is done; a row with reps 0 is an assignment, and
+    // assigned is not done (lesson review, 2026-09-11).
+    const doneCount = new Map(); const lastDone = new Map(); const assignedOn = new Map();
     for (const s of (doneRes.data || [])) {
         const k = String(s.drill_slug || '').toLowerCase();
-        doneCount.set(k, (doneCount.get(k) || 0) + 1);
+        const day = String(s.created_at).slice(0, 10);
+        if (Number(s.reps) > 0) {
+            doneCount.set(k, (doneCount.get(k) || 0) + 1);
+            if (day > (lastDone.get(k) || '')) lastDone.set(k, day);
+        } else if (day > (assignedOn.get(k) || '')) assignedOn.set(k, day);
     }
 
     const ranked = progress.slice().sort((a, b) => {
@@ -193,14 +199,18 @@ export async function mountTrain(root) {
         }
 
         for (const d of drills) {
-            const times = doneCount.get(String(d.title).toLowerCase()) || 0;
+            const key = String(d.title).toLowerCase();
+            const times = doneCount.get(key) || 0;
+            const pending = assignedOn.get(key) && assignedOn.get(key) > (lastDone.get(key) || '') ? assignedOn.get(key) : null;
             detail.appendChild(el('div', { class: 'card', style: { marginBottom: '10px' } }, [
                 el('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' } }, [
                     el('span', { class: 'label', style: { color: d.mode === 'solo' ? GOOD : 'var(--gold, #c9a86a)' } }, [
                         d.mode === 'solo' ? 'On your own' : 'With a partner'
                     ]),
                     el('span', { class: 'label', style: { color: INK_MUTE } }, [d.level]),
-                    times ? el('span', { class: 'label', style: { color: GOOD } }, [`done ${times}×`]) : null
+                    times ? el('span', { class: 'label', style: { color: GOOD } }, [`done ${times}×`]) : null,
+                    // Assigned and still not done.
+                    pending ? el('span', { class: 'label', style: { color: WARN, fontWeight: '700' } }, [`assigned ${pending.slice(5)}, not done`]) : null
                 ]),
                 el('div', {
                     style: {
@@ -216,25 +226,35 @@ export async function mountTrain(root) {
                 d.suggested_reps
                     ? el('div', { class: 'label', style: { color: INK_MUTE, marginTop: '10px' } }, [d.suggested_reps])
                     : null,
-                el('button', {
-                    class: 'btn btn-mono-label',
-                    style: { marginTop: '14px', width: '100%' },
-                    onclick: async (e) => {
-                        const btn = e.currentTarget;
-                        btn.disabled = true;
+                // Done carries the reps; Assign writes a row with reps 0 that
+                // stays "not done" until a done row follows it.
+                (() => {
+                    const sug = String(d.suggested_reps || '');
+                    const m = sug.match(/(\d+)\s*sets?\s*of\s*(\d+)/i) || sug.match(/(\d+)/);
+                    const guess = m ? (m[2] ? Number(m[1]) * Number(m[2]) : Number(m[1])) : 10;
+                    const reps = el('input', { type: 'number', min: '1', inputmode: 'numeric', value: String(guess), class: 'field-input', 'aria-label': 'Reps done', style: { width: '90px', color: INK } });
+                    const record = async (n, said) => {
                         const { error } = await supa.from('drill_sessions').insert({
                             profile_id: profile.id,
                             // The drill's own title is the key. drill_slug used to
                             // point at drill_library, which is conditioning only.
-                            drill_slug: d.title,
-                            weakness_slug: d.skill_slug,
+                            drill_slug: d.title, weakness_slug: d.skill_slug, reps: n, rating: n > 0 ? 3 : null,
                             note: `${d.mode} · ${d.suggested_reps || ''}`.trim()
                         });
-                        if (error) { toast('Could not log: ' + error.message, 'error'); btn.disabled = false; return; }
-                        toast('Logged');
-                        btn.textContent = 'Logged';
-                    }
-                }, ['I did this'])
+                        if (error) { toast('Could not log: ' + error.message, 'error'); return false; }
+                        toast(said); return true;
+                    };
+                    const done = el('button', { class: 'btn btn-mono-label', style: { flex: '1 1 auto' } }, ['Done, this many reps']);
+                    done.onclick = async () => {
+                        const n = Number(reps.value) || 0;
+                        if (n < 1) { toast('How many reps?', 'error'); return; }
+                        done.disabled = true;
+                        if (await record(n, `Logged: ${n} reps`)) done.textContent = 'Done'; else done.disabled = false;
+                    };
+                    const assign = el('button', { class: 'btn btn-ghost btn-mono-label' }, ['Assign']);
+                    assign.onclick = async () => { assign.disabled = true; if (await record(0, 'Assigned')) assign.textContent = 'Assigned'; else assign.disabled = false; };
+                    return el('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '14px' } }, [reps, done, assign]);
+                })()
             ]));
         }
 
