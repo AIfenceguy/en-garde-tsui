@@ -8,12 +8,12 @@
 // category the boy is chasing gets a points plan: the counting rule, the
 // slots, the event that fills each slot, the projected total.
 //
-// Two sources feed the fields. The season table carries the 8 September
-// snapshot for every event on the calendar. An event a member adds here is
-// refreshed on demand through the refresh-event function - the entry list and
-// each entrant's placings and strength trend, read once and cached - and is
-// then scored live in the browser (lib/season-model.js), opponents tilted by
-// their own 90-day form the same way the boys are seeded on theirs.
+// Two sources feed the fields. The season table carries the calendar
+// snapshot for every event. The registered field comes from our own copy of
+// the entry lists, refreshed by the morning upkeep in the weeks before an
+// event, and is scored here in the browser (lib/season-model.js), opponents
+// tilted by their own 90-day form the same way the boys are seeded on theirs.
+// Nothing is read from outside while the screen renders.
 
 import { el, toast } from '../lib/util.js';
 import { supa } from '../lib/supa.js';
@@ -141,10 +141,11 @@ export async function mountSeason(root) {
         supa.from('flight_watches').select('id,label,destination,depart_date,return_date,hotel_nightly_rate,booked_out_cash,booked_ret_cash,passengers').is('deleted_at', null),
         supa.from('flight_prices').select('watch_id,price_per_person,effective_per_person,observed_at').order('observed_at', { ascending: false }).limit(200),
         supa.from('fencer_bouts').select('*').eq('profile_id', profile.id).order('bout_date', { ascending: false }).limit(40),
-        supa.from('event_refresh').select('*'),
+        // When our copy of the entry lists was last brought up to date.
+        supa.from('ft_events').select('entrants_read_at').not('entrants_read_at', 'is', null).order('entrants_read_at', { ascending: false }).limit(1).maybeSingle(),
         supa.from('member_events').select('*').eq('profile_id', profile.id),
         supa.from('household').select('*').maybeSingle(),
-        supa.from('refresh_runs').select('finished_at,events_done,pages').not('finished_at', 'is', null).order('id', { ascending: false }).limit(1).maybeSingle(),
+        Promise.resolve({ data: null }),
         supa.from('profiles').select('id,name,birth_year,strength_de,strength_pool,tracker_id').eq('kind', 'fencer'),
         supa.from('standings_marks').select('*').eq('weapon', 'MF'),
         supa.from('fencer_goals').select('*'),
@@ -156,9 +157,9 @@ export async function mountSeason(root) {
         supa.from('bouts').select('id,date,my_score,their_score,opponent_tracker_id,source_bout_id,reflection').eq('profile_id', profile.id).is('deleted_at', null).gte('date', since180)
     ]);
     body.innerHTML = '';
-    if (runRes?.data?.finished_at) {
+    if (refreshRes?.data?.entrants_read_at) {
         body.appendChild(el('div', { class: 'label', style: { color: INK_MUTE, padding: '0 var(--gut) 12px' } }, [
-            `Fields last read ${new Date(runRes.data.finished_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · refreshed nightly`
+            `Entry lists in our copy current to ${new Date(refreshRes.data.entrants_read_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · brought up to date each morning`
         ]));
     }
 
@@ -176,8 +177,12 @@ export async function mountSeason(root) {
 
     const ts = Object.fromEntries((tsRes.data || []).map((r) => [r.days, r]));
     const myForm = formStrength(ts, profile);
-    const refreshed = new Map((refreshRes.data || []).map((r) => [Number(r.ft_event_id), r]));
     const mine = mineRes.data || [];
+    // The events the family marked that the calendar does not carry: title,
+    // date and field size from our copy.
+    const mineIds = [...new Set(mine.map((m) => Number(m.ft_event_id)).filter(Boolean))];
+    const { data: mineEvs } = mineIds.length ? await supa.from('ft_events').select('ft_event_id,title,tournament,event_date,entrants').in('ft_event_id', mineIds) : { data: [] };
+    const refreshed = new Map((mineEvs || []).map((r) => [Number(r.ft_event_id), { ...r, title: r.title || r.tournament }]));
     const watches = watchRes.data || [];
     const latestPrice = {};
     for (const p of priceRes.data || []) if (!latestPrice[p.watch_id]) latestPrice[p.watch_id] = p;
@@ -191,7 +196,7 @@ export async function mountSeason(root) {
     // Events: the season table, plus anything this member added that is not on it.
     let events = (evRes.data || []).filter((e) => e.projections && e.projections[profile.name]);
     const known = new Set(events.map((e) => Number(e.ft_event_id)).filter(Boolean));
-    // A FencingTracker event the member added is the calendar's own row when
+    // An event the member marked is the calendar's own row when
     // the tournament, category and weekend agree; the row takes the id and
     // the live field, and the screen never shows the same event twice.
     const normName = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -218,8 +223,8 @@ export async function mountSeason(root) {
     const marks = Object.fromEntries((marksRes?.data || []).map((m) => [m.category, m]));
     const standing = Object.fromEntries((standRes?.data || []).map((s) => [s.category, s]));
     // What the family has decided: going, or on the shortlist. Matched by our
-    // own row id first (national events have no FencingTracker id yet), then by
-    // FencingTracker id.
+    // own row id first (national events have no results id yet), then by
+    // results id.
     const statusOf = new Map();
     for (const m of mine) {
         if (m.season_event_id) statusOf.set('s:' + m.season_event_id, m.status || 'going');
@@ -273,7 +278,6 @@ export async function mountSeason(root) {
     }
     body.appendChild(await peersCard(profile, events));
     body.appendChild(howToRead(profile, sibling));
-    if (PARENT) body.appendChild(addEventCard(profile));
     if (PARENT) body.appendChild(usafCard(ctx));
     body.appendChild(recentBouts(boutRes.data || [], profile));
 }
@@ -725,16 +729,6 @@ function weekendsCard(key, title, sub, rows, ctx, refreshed) {
             det.appendChild(btn); det.appendChild(inner);
             card.appendChild(det);
         }
-        if (PARENT && w.decided.some((e) => e.ft_event_id)) {
-            const e = w.decided.find((x) => x.ft_event_id);
-            const rb = el('button', { class: 'btn btn-ghost btn-sm btn-mono-label', style: { marginTop: '6px' } }, [refreshed.has(Number(e.ft_event_id)) ? 'Re-read the field' : 'Read the live field']);
-            rb.onclick = async () => {
-                rb.disabled = true; rb.textContent = 'Reading…';
-                try { for (const x of w.decided.filter((y) => y.ft_event_id)) await refreshEvent(Number(x.ft_event_id), (msg) => { rb.textContent = msg; }, refreshed.has(Number(x.ft_event_id))); location.reload(); }
-                catch (err) { rb.disabled = false; rb.textContent = 'Read the live field'; toast('Could not read: ' + (err.message || err), 'error'); }
-            };
-            card.appendChild(rb);
-        }
         if (PARENT && w.decided.some((e) => e.usaf_id)) {
             const e = w.decided.find((x) => x.usaf_id);
             card.appendChild(entriesButton(e.usaf_id, e.usaf_read_at));
@@ -931,21 +925,15 @@ function eventRow(e, i, ctx, refreshed, group) {
         row.appendChild(el('div', { style: { display: 'grid', gridTemplateColumns: '1fr', gap: '4px', marginTop: '2px' } }, p.neighbours.map((n) => {
             const col = n.tag === 'rising' ? WARN : n.tag === 'fading' || n.tag === 'inactive' ? GOOD : INK;
             return el('div', { style: { display: 'flex', gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' } }, [
-                el('a', { href: `https://fencingtracker.com/p/${n.tracker_id}/x`, target: '_blank', rel: 'noopener', style: { color: INK, fontSize: '14px', fontWeight: n.tag === 'rising' ? '700' : '500', textDecoration: 'none' } }, [n.name]),
+                el('span', { style: { color: INK, fontSize: '14px', fontWeight: '500' } }, [n.name]),
                 el('span', { class: 'num', style: { color: INK, fontSize: '13px' } }, [String(n.strength)]),
                 n.tag !== 'steady' ? el('span', { class: 'label', style: { color: col, fontWeight: '700' } }, [n.tag]) : null,
                 el('span', { class: 'label', style: { color: INK_MUTE } }, [n.form || ''])
             ].filter(Boolean));
         })));
     }
-    if (PARENT && e.ft_event_id && group !== 'skip') {
-        const rb = el('button', { class: 'btn btn-ghost btn-sm btn-mono-label', style: { marginTop: '6px', justifySelf: 'start' } }, [refreshed.has(Number(e.ft_event_id)) ? 'Re-read the field' : 'Read the live field']);
-        rb.onclick = async () => {
-            rb.disabled = true; rb.textContent = 'Reading…';
-            try { await refreshEvent(Number(e.ft_event_id), (msg) => { rb.textContent = msg; }, refreshed.has(Number(e.ft_event_id))); location.reload(); }
-            catch (err) { rb.disabled = false; rb.textContent = 'Read the live field'; toast('Could not read: ' + (err.message || err), 'error'); }
-        };
-        row.appendChild(rb);
+    if (e.refreshed_at && group !== 'skip') {
+        row.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '4px 0 0' } }, [`Field from our copy, read ${new Date(e.refreshed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}; it is refreshed every other day in the weeks before the event.`]));
     }
     if (PARENT && e.usaf_id && group !== 'skip') row.appendChild(entriesButton(e.usaf_id, e.usaf_read_at));
     return row;
@@ -965,7 +953,7 @@ function fieldList(p, ctx) {
             list.appendChild(el('div', { style: { display: 'grid', gridTemplateColumns: '28px 1fr 56px 52px', gap: '8px', alignItems: 'baseline' } }, [
                 el('span', { class: 'label', style: { color: INK_MUTE } }, [String(i + 1)]),
                 el('span', { style: { color: INK, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, [
-                    el('a', { href: `https://fencingtracker.com/p/${f.tracker_id}/x`, target: '_blank', rel: 'noopener', style: { color: INK, textDecoration: 'none', fontWeight: f.tag === 'rising' ? '700' : '500' } }, [f.name]),
+                    el('span', { style: { color: INK, fontWeight: '500' } }, [f.name]),
                     f.tag !== 'steady' ? el('span', { class: 'label', style: { color: f.tag === 'rising' ? WARN : GOOD, marginLeft: '6px' } }, [f.tag]) : null
                 ].filter(Boolean)),
                 el('span', { class: 'num', style: { color: INK, fontSize: '13px', textAlign: 'right' } }, [String(f.strength)]),
@@ -989,28 +977,38 @@ function fieldList(p, ctx) {
 // ---------------------------------------------------------------------------
 // Live scoring from the on-demand cache: entrants + each fencer's windows.
 // ---------------------------------------------------------------------------
-async function applyLiveForecasts(events, refreshed, profile, myForm) {
-    const liveIds = events.map((e) => Number(e.ft_event_id)).filter((id) => id && refreshed.has(id));
-    if (!liveIds.length) return;
-    const { data: entrants } = await supa.from('ft_event_entrants').select('ft_event_id,tracker_id,name,strength_de').in('ft_event_id', liveIds);
+// The registered field comes from our own copy of the entry lists, which the
+// morning upkeep refreshes for the coming weeks. Nothing is read from
+// anywhere while the screen renders. A list the copier could not read in
+// full is left alone rather than scored short.
+async function applyLiveForecasts(events, _refreshed, profile, myForm) {
+    const ids = [...new Set(events.map((e) => Number(e.ft_event_id)).filter(Boolean))];
+    if (!ids.length) return;
+    const [{ data: entrants }, { data: evs }] = await Promise.all([
+        supa.from('ft_entries').select('ft_event_id,tracker_id,name,strength_de').in('ft_event_id', ids),
+        supa.from('ft_events').select('ft_event_id,entrants_read_at,entrants_complete').in('ft_event_id', ids)
+    ]);
     if (!entrants?.length) return;
-    const ids = [...new Set(entrants.map((x) => Number(x.tracker_id)))];
+    const meta = new Map((evs || []).map((x) => [Number(x.ft_event_id), x]));
+    const tids = [...new Set(entrants.map((x) => Number(x.tracker_id)))];
     const snaps = new Map();
-    for (let i = 0; i < ids.length; i += 250) {
-        const { data } = await supa.from('fencer_snapshot').select('tracker_id,strength_de,strength_pool,de_now,de_90d,de_180d,pool_now,pool_90d,pool_180d,events_90d,events_180d,results_90d,median_pct_90d,best_pct_90d,results_180d,median_pct_180d,last_event,fetched_at').in('tracker_id', ids.slice(i, i + 250));
+    for (let i = 0; i < tids.length; i += 250) {
+        const { data } = await supa.from('fencer_snapshot').select('tracker_id,strength_de,strength_pool,de_now,de_90d,de_180d,pool_now,pool_90d,pool_180d,events_90d,events_180d,results_90d,median_pct_90d,best_pct_90d,results_180d,median_pct_180d,last_event,fetched_at').in('tracker_id', tids.slice(i, i + 250));
         for (const s of data || []) snaps.set(Number(s.tracker_id), s);
     }
     const byEvent = new Map();
     for (const x of entrants) { const k = Number(x.ft_event_id); if (!byEvent.has(k)) byEvent.set(k, []); byEvent.get(k).push(x); }
     for (const e of events) {
-        const list = byEvent.get(Number(e.ft_event_id));
-        e.entrant_names = (list || []).map((x) => x.name);
-        if (!list || !e.category) continue;
+        const k = Number(e.ft_event_id);
+        const list = byEvent.get(k), m = meta.get(k);
+        if (!list || m?.entrants_complete === false) continue;
+        e.entrant_names = list.map((x) => x.name);
+        if (!e.category) continue;
         const f = forecast({ entrants: list, snapshots: snaps, myStrength: myForm, myOfficial: profile.strength_de ?? myForm, myPool: profile.strength_pool ?? null, myTrackerId: profile.tracker_id, category: e.category, tier: e.tier });
         if (!f) continue;
         e.projections[profile.name] = { ...(e.projections[profile.name] || {}), ...f, pending: false };
         e.entrants = list.length;
-        e.refreshed_at = refreshed.get(Number(e.ft_event_id))?.last_refreshed_at;
+        e.refreshed_at = m?.entrants_read_at || null;
     }
 }
 
@@ -1160,75 +1158,88 @@ function strengthCard(profile, ts, myForm, drill = {}) {
 // count, where they are registered, and which of those weekends are on his
 // plan. Read on demand, one profile at a time, cached three days.
 // ---------------------------------------------------------------------------
+// Everything about a watched fencer comes from our own copy: who he is, our
+// rating for him, where he is entered (the copy's entry lists for the coming
+// weeks) and his last results. Nothing is read from anywhere at runtime; a
+// fencer is added by member number.
 async function peersCard(profile, events) {
     const wrap = el('section', { class: 'card', style: { margin: '0 var(--gut) 18px' } });
     const { data: peers } = await supa.from('peers').select('*').eq('profile_id', profile.id).order('added_at');
-    const ids = (peers || []).map((p) => Number(p.tracker_id));
-    const { data: snaps } = ids.length ? await supa.from('peer_snapshot').select('*').in('tracker_id', ids) : { data: [] };
-    const snapOf = new Map((snaps || []).map((s) => [Number(s.tracker_id), s]));
+    const ids = [...new Set((peers || []).map((p) => Number(p.tracker_id)).filter(Boolean))];
+    const today = new Date().toISOString().slice(0, 10);
+    const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+    let whoBy = new Map(), ownBy = new Map(), entriesBy = new Map(), resultsBy = new Map();
+    if (ids.length) {
+        const [{ data: who }, { data: own }, { data: ents }, { data: rs }] = await Promise.all([
+            supa.from('ft_fencers').select('tracker_id,name,club,rating,birth_year').in('tracker_id', ids),
+            supa.from('own_ratings').select('tracker_id,rating,sd,events_365').in('tracker_id', ids),
+            supa.from('ft_entries').select('tracker_id,ft_event_id').in('tracker_id', ids),
+            supa.from('ft_results').select('tracker_id,ft_event_id,place').in('tracker_id', ids)
+        ]);
+        whoBy = new Map((who || []).map((x) => [Number(x.tracker_id), x]));
+        ownBy = new Map((own || []).map((x) => [Number(x.tracker_id), x]));
+        const evIds = [...new Set((ents || []).map((x) => Number(x.ft_event_id)))];
+        const { data: evs } = evIds.length ? await supa.from('ft_events').select('ft_event_id,tournament,title,event_date').in('ft_event_id', evIds).gte('event_date', today) : { data: [] };
+        const evBy = new Map((evs || []).map((x) => [Number(x.ft_event_id), x]));
+        for (const x of ents || []) { const ev = evBy.get(Number(x.ft_event_id)); if (!ev) continue; const k = Number(x.tracker_id); if (!entriesBy.has(k)) entriesBy.set(k, []); entriesBy.get(k).push(ev); }
+        const rIds = [...new Set((rs || []).map((x) => Number(x.ft_event_id)))];
+        const rEvs = new Map();
+        for (let i = 0; i < rIds.length; i += 300) {
+            const { data } = await supa.from('ft_result_events').select('rid,event_name,tournament,event_date,finishers').in('rid', rIds.slice(i, i + 300)).gte('event_date', since);
+            for (const x of data || []) rEvs.set(Number(x.rid), x);
+        }
+        for (const x of rs || []) { const ev = rEvs.get(Number(x.ft_event_id)); if (!ev) continue; const k = Number(x.tracker_id); if (!resultsBy.has(k)) resultsBy.set(k, []); resultsBy.get(k).push({ ...ev, place: x.place }); }
+        for (const l of resultsBy.values()) l.sort((a, b) => String(b.event_date).localeCompare(String(a.event_date)));
+    }
     wrap.appendChild(label('Fencers to watch · just above him on the standings'));
     wrap.appendChild(serif(peers?.length ? `${peers.length} fencers` : 'Nobody watched yet', '24px'));
     wrap.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '13px', margin: '4px 0 10px', lineHeight: '1.5' } }, [
-        'The kids a few places above him: what they enter, what they count, and where he will meet them. The pattern to copy is theirs, not the crowd\'s.'
+        'The kids a few places above him: what they enter, what they count, and where he will meet them. The pattern to copy is theirs, not the crowd\'s. From our copy of the results and entry lists.'
     ]));
-    const planTournaments = new Set(events.filter((e) => e.group && e.group !== 'skip').map((e) => e.tournament.toLowerCase()));
+    const planTournaments = new Set(events.filter((e) => e.group && e.group !== 'skip').map((e) => String(e.tournament).toLowerCase()));
     const list = el('div', {});
     for (const p of peers || []) {
-        const s = snapOf.get(Number(p.tracker_id));
+        const tid = Number(p.tracker_id);
+        const w = whoBy.get(tid), o = ownBy.get(tid);
         const row = el('div', { style: { padding: '10px 0', borderTop: '1px solid var(--rule)' } });
         row.appendChild(el('div', { style: { display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'baseline', flexWrap: 'wrap' } }, [
-            el('a', { href: `https://fencingtracker.com/p/${p.tracker_id}/x`, target: '_blank', rel: 'noopener', style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '700', fontSize: '19px', color: INK, textDecoration: 'none' } }, [s?.name || p.name || `#${p.tracker_id}`]),
-            el('span', { class: 'label', style: { color: INK_MUTE } }, [[p.note, s?.club, s?.rating, s?.birth_year ? `born ${s.birth_year}` : null, s?.strength_de ? `DE ${s.strength_de}` : null].filter(Boolean).join(' · ')])
+            el('span', { style: { fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: '700', fontSize: '19px', color: INK } }, [w?.name || p.name || `#${p.tracker_id}`]),
+            el('span', { class: 'label', style: { color: INK_MUTE } }, [[p.note, w?.club, w?.rating, w?.birth_year ? `born ${w.birth_year}` : null, o ? `strength ${o.rating} ± ${o.sd}` : null].filter(Boolean).join(' · ')])
         ]));
-        if (!s) {
-            row.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '4px 0 0' } }, ['Not read yet.']));
-        } else {
-            const regs = (s.registrations || []).filter((r) => r.d >= new Date().toISOString().slice(0, 10) || !r.d);
-            const meet = regs.filter((r) => planTournaments.has(String(r.tournament).toLowerCase()));
-            const byT = new Map();
-            for (const r of regs) { const k = r.tournament; if (!byT.has(k)) byT.set(k, []); byT.get(k).push(String(r.event).replace(/\s*\(.*$/, '').replace(/Men's Foil/i, '').trim()); }
-            if (byT.size) {
-                row.appendChild(el('p', { style: { color: INK, fontSize: '13px', margin: '4px 0 0', lineHeight: '1.5' } }, [
-                    el('b', {}, ['Entered: ']), [...byT.entries()].map(([t, ev]) => `${t} (${ev.join(', ')})`).join(' · ')
-                ]));
-            }
+        if (!w && !o) row.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '4px 0 0' } }, ['Not in our copy yet.']));
+        const regs = entriesBy.get(tid) || [];
+        const byT = new Map();
+        for (const r of regs) { const k = r.tournament || '?'; if (!byT.has(k)) byT.set(k, []); byT.get(k).push(String(r.title || '').replace(/\s*\(.*$/, '').replace(/Men's Foil/i, '').trim()); }
+        if (byT.size) {
+            row.appendChild(el('p', { style: { color: INK, fontSize: '13px', margin: '4px 0 0', lineHeight: '1.5' } }, [
+                el('b', {}, ['Entered: ']), [...byT.entries()].map(([t, ev]) => `${t} (${ev.filter(Boolean).join(', ')})`).join(' · ')
+            ]));
+            const meet = [...byT.keys()].filter((t) => planTournaments.has(String(t).toLowerCase()));
             if (meet.length) {
-                row.appendChild(el('p', { style: { color: WARN, fontSize: '13px', margin: '2px 0 0', lineHeight: '1.5', fontWeight: '700' } }, [
-                    `On his plan too: ${[...new Set(meet.map((r) => r.tournament))].join(', ')}.`
-                ]));
-            }
-            const res = (s.results || []).slice(0, 6);
-            if (res.length) {
-                row.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '4px 0 0', lineHeight: '1.5' } }, [
-                    el('b', { style: { color: INK } }, ['Recent: ']), res.map((r) => `${r.event.replace(/Men's Foil/i, '').trim()} ${r.place}/${r.field} (${String(r.d).slice(5)})`).join(' · ')
-                ]));
+                row.appendChild(el('p', { style: { color: WARN, fontSize: '13px', margin: '2px 0 0', lineHeight: '1.5', fontWeight: '700' } }, [`On his plan too: ${meet.join(', ')}.`]));
             }
         }
-        const btn = el('button', { class: 'btn btn-ghost btn-sm btn-mono-label', style: { marginTop: '6px' } }, [s ? 'Re-read' : 'Read his record']);
-        btn.onclick = async () => {
-            btn.disabled = true; btn.textContent = 'Reading…';
-            try {
-                const { data, error } = await supa.functions.invoke('refresh-peer', { body: { tracker_id: Number(p.tracker_id), force: Boolean(s) } });
-                if (error || data?.error) throw new Error(error?.message || data?.error);
-                location.reload();
-            } catch (err) { btn.disabled = false; btn.textContent = 'Read his record'; toast('Could not read: ' + (err.message || err), 'error'); }
-        };
-        row.appendChild(btn);
+        const res = (resultsBy.get(tid) || []).slice(0, 6);
+        if (res.length) {
+            row.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '4px 0 0', lineHeight: '1.5' } }, [
+                el('b', { style: { color: INK } }, ['Recent: ']), res.map((r) => `${String(r.event_name || '').replace(/Men's Foil/i, '').trim()} ${r.place ?? '?'}/${r.finishers ?? '?'} (${String(r.event_date).slice(5)})`).join(' · ')
+            ]));
+        }
         list.appendChild(row);
     }
     wrap.appendChild(list);
-    // Add one by pasting a FencingTracker profile link.
-    const input = el('input', { type: 'text', class: 'field-input', placeholder: 'https://fencingtracker.com/p/100316398/…', autocomplete: 'off', style: { marginTop: '10px', color: INK } });
+    // Add one by member number; the name comes from our copy.
+    const input = el('input', { type: 'text', class: 'field-input', placeholder: 'USA Fencing member number, e.g. 100316398', inputmode: 'numeric', autocomplete: 'off', style: { marginTop: '10px', color: INK } });
     const add = el('button', { class: 'btn btn-mono-label', style: { width: '100%', marginTop: '8px' } }, ['Watch this fencer']);
     add.onclick = async () => {
-        const m = String(input.value).match(/\/p\/(\d{6,10})/) || String(input.value).match(/(\d{6,10})/);
-        if (!m) { toast('Paste a results profile link', 'error'); return; }
-        add.disabled = true; add.textContent = 'Reading…';
+        const m = String(input.value).match(/(\d{6,10})/);
+        if (!m) { toast('Enter a member number', 'error'); return; }
+        add.disabled = true; add.textContent = 'Adding…';
         try {
             const tid = Number(m[1]);
-            const { data, error } = await supa.functions.invoke('refresh-peer', { body: { tracker_id: tid } });
-            if (error || data?.error) throw new Error(error?.message || data?.error);
-            await safeWrite({ table: 'peers', op: 'upsert', onConflict: 'profile_id,tracker_id', payload: { profile_id: profile.id, tracker_id: tid, name: data?.name || null } });
+            const { data: f } = await supa.from('ft_fencers').select('tracker_id,name').eq('tracker_id', tid).maybeSingle();
+            if (!f) throw new Error('that number is not in our copy of the results');
+            await safeWrite({ table: 'peers', op: 'upsert', onConflict: 'profile_id,tracker_id', payload: { profile_id: profile.id, tracker_id: tid, name: f.name || null } });
             location.reload();
         } catch (err) { add.disabled = false; add.textContent = 'Watch this fencer'; toast('Could not add: ' + (err.message || err), 'error'); }
     };
@@ -1295,7 +1306,7 @@ function howToRead(profile, sibling) {
 }
 
 // ---------------------------------------------------------------------------
-// Add an event: paste the FencingTracker link.
+// USA Fencing, on request.
 // ---------------------------------------------------------------------------
 // The official standings, read on request from USA Fencing's own ranking
 // data (Cadet, Junior, Senior lists; youth points come from the points
@@ -1460,53 +1471,8 @@ async function resultsOnRecord(host, profile) {
     host.appendChild(table);
 }
 
-function addEventCard(profile) {
-    const wrap = el('section', { class: 'card', style: { margin: '0 var(--gut) 18px' } });
-    wrap.appendChild(label('Add an event'));
-    wrap.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '13px', margin: '6px 0 10px', lineHeight: '1.5' } }, [
-        'Paste the results link of the event he is registered for. The entry list is read once and every registered fencer is scored on their recent form.'
-    ]));
-    const input = el('input', { type: 'text', class: 'field-input', placeholder: 'https://fencingtracker.com/event/12345', autocomplete: 'off', style: { color: INK } });
-    const cat = el('select', { class: 'field-input', style: { marginTop: '8px', color: INK } }, [
-        el('option', { value: '' }, ['Category: read from the event name']),
-        ...CAT_ORDER.map((c) => el('option', { value: c }, [catLabel(c)]))
-    ]);
-    const btn = el('button', { class: 'btn btn-primary btn-mono-label', style: { width: '100%', marginTop: '10px' } }, ['Add and read the field']);
-    const status = el('div', { class: 'label', style: { color: INK_MUTE, marginTop: '8px', minHeight: '16px' } }, ['']);
-    btn.onclick = async () => {
-        const m = String(input.value).match(/(\d{4,7})/);
-        if (!m) { toast('Paste an event link', 'error'); return; }
-        const ftEventId = Number(m[1]);
-        btn.disabled = true; btn.textContent = 'Reading…';
-        try {
-            await safeWrite({ table: 'member_events', op: 'upsert', onConflict: 'profile_id,ft_event_id', payload: { profile_id: profile.id, ft_event_id: ftEventId, category: cat.value || null } });
-            const res = await refreshEvent(ftEventId, (msg) => { status.textContent = msg; });
-            if (res?.title) {
-                await safeWrite({ table: 'member_events', op: 'update', match: { profile_id: profile.id, ft_event_id: ftEventId }, payload: { category: cat.value || categoryOf(res.title), tournament: res.title, event_date: res.event_date } });
-            }
-            toast(`Read ${res?.entrants ?? 0} entrants`);
-            location.reload();
-        } catch (e) {
-            btn.disabled = false; btn.textContent = 'Add and read the field';
-            toast('Could not read the event: ' + (e.message || e), 'error');
-        }
-    };
-    wrap.appendChild(input); wrap.appendChild(cat); wrap.appendChild(btn); wrap.appendChild(status);
-    return wrap;
-}
-
-async function refreshEvent(ftEventId, onProgress, force = false) {
-    let last = null;
-    for (let i = 0; i < 8; i++) {
-        const { data, error } = await supa.functions.invoke('refresh-event', { body: { ft_event_id: ftEventId, force: force && i === 0 } });
-        if (error) throw new Error(error.message || 'refresh failed');
-        if (data?.error) throw new Error(data.error);
-        last = data;
-        onProgress?.(data.cached ? `Cached: ${data.entrants} entrants, read ${new Date(data.last_refreshed_at).toLocaleDateString()}` : `${data.entrants} entrants · ${data.snapshots_fresh} scored${data.partial ? ' · reading more…' : ''}`);
-        if (!data.partial) break;
-    }
-    return last;
-}
+// The plan's rows are linked to our copy's events overnight (link_plan_events,
+// by code, date and name), so nothing is pasted or read here any more.
 
 // ---------------------------------------------------------------------------
 // Cost for one adult and this fencer, for the days he fences at that

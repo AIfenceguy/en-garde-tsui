@@ -34,7 +34,7 @@ export function mountOnboard(root, email) {
         ...Array.from({ length: 14 }, (_, i) => thisYear - 6 - i).map((y) => el('option', { value: String(y) }, [`${y} · ${CATEGORY_LABEL[categoryFor(y)] || ''}`]))
     ]);
     const weapon = el('select', { class: 'field-input' }, [['foil', 'Foil'], ['epee', 'Épée'], ['saber', 'Saber']].map(([v, t]) => el('option', { value: v }, [t])));
-    const tracker = el('input', { type: 'text', class: 'field-input', placeholder: 'https://fencingtracker.com/p/1003…/… (optional)', autocomplete: 'off' });
+    const tracker = el('input', { type: 'text', class: 'field-input', placeholder: 'USA Fencing member number, e.g. 100280844 (optional)', inputmode: 'numeric', autocomplete: 'off' });
 
     wrap.appendChild(el('div', { class: 'auth-form' }, [
         el('div', { class: 'label-row' }, [el('span', { class: 'label' }, ['Parent'])]),
@@ -45,7 +45,7 @@ export function mountOnboard(root, email) {
         field('Name', fencerName),
         field('Born', birth),
         field('Weapon', weapon),
-        field('Results profile link', tracker),
+        field('USA Fencing member number', tracker),
         el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '2px 0 14px', lineHeight: '1.5' } }, ['Optional. With it the app can read his entry lists and bouts. His USA Fencing record is matched by name and birth year when the standings are read.']),
         (() => {
             const btn = el('button', { type: 'button', class: 'btn btn-primary btn-block btn-mono-label', style: { marginTop: '10px' } }, ['Start']);
@@ -56,7 +56,7 @@ export function mountOnboard(root, email) {
                 if (!fName || !by) { toast('The fencer needs a name and a birth year', 'error'); return; }
                 const z = zip.value.trim();
                 if (z && !/^\d{5}$/.test(z)) { toast('ZIP is five digits', 'error'); return; }
-                const m = String(tracker.value).match(/\/p\/(\d{6,10})/);
+                const m = String(tracker.value).match(/(\d{6,10})/);
                 btn.disabled = true; btn.textContent = 'Setting up…';
                 try {
                     const uid = getState().session.user.id;
@@ -64,7 +64,7 @@ export function mountOnboard(root, email) {
                     if (e1) throw e1;
                     const { data: fencer, error: e2 } = await supa.from('profiles').insert({
                         owner_user_id: uid, name: fName, role: roleSlug(fName), kind: 'fencer', birth_year: by, primary_weapon: weapon.value,
-                        accent_hex: '#a82b2b', tracker_id: m ? m[1] : null, tracker_url: m ? tracker.value.trim() : null
+                        accent_hex: '#a82b2b', tracker_id: m ? m[1] : null, tracker_url: null, usaf_member_id: m ? m[1] : null
                     }).select().single();
                     if (e2) throw e2;
                     if (z) { const { error: e3 } = await supa.from('household').upsert({ owner_user_id: uid, home_zip: z, hotel_night: 180, updated_at: new Date().toISOString() }); if (e3) throw e3; }

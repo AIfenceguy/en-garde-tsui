@@ -77,7 +77,7 @@ export async function getOpponent(id) {
     return data;
 }
 
-// One record per fencer. A FencingTracker id is the surest match; the name is
+// One record per fencer. A results id (the USA Fencing member number) is the surest match; the name is
 // the fallback (case-insensitive). An existing record picks up whatever it was
 // missing - club, rating, the tracker id - and never loses what was typed.
 export async function findOrCreateOpponent({ name, club = null, rating = null, tracker_id = null }) {

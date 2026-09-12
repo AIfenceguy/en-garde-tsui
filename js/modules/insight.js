@@ -1,6 +1,6 @@
 // Competition Insight — where a fencer is likely to finish, and why.
 //
-// Two strengths sit side by side on purpose. FencingTracker's official number
+// Two strengths sit side by side on purpose. The official strength number
 // is a Bayesian estimate over every bout ever recorded: right for seeding, and
 // slow to move. Form strength is computed here from the last twelve months of
 // placings, mapped onto real strength bands by percentile of field, weighted
@@ -237,13 +237,6 @@ export async function mountInsight(root) {
             ]));
         }
 
-        if (e.tracker_url) {
-            card.appendChild(el('a', {
-                href: e.tracker_url, target: '_blank', rel: 'noopener', class: 'label',
-                style: { color: 'var(--cta, #0071e3)', display: 'inline-block', marginTop: '10px' }
-            }, ['Full entry list \u2192']));
-        }
-
         // The tier above: the fencers one band up, read from twelve months of
         // their own results. Strength says where they are seeded; the windows
         // say what they have actually done lately.
@@ -282,11 +275,7 @@ export async function mountInsight(root) {
                     el('span', { class: 'label', style: { color: INK_MUTE } }, [`${c.birth_year} · ${c.club}`])
                 ]),
                 serif(c.headline, '20px', GOOD),
-                el('p', { style: { color: INK, fontSize: '13px', lineHeight: '1.6', margin: '8px 0 0' } }, [c.detail]),
-                c.tracker_url
-                    ? el('a', { href: c.tracker_url, target: '_blank', rel: 'noopener', class: 'label',
-                               style: { color: 'var(--cta, #0071e3)', display: 'inline-block', marginTop: '8px' } }, ['Results profile →'])
-                    : null
+                el('p', { style: { color: INK, fontSize: '13px', lineHeight: '1.6', margin: '8px 0 0' } }, [c.detail])
             ]));
         }
     }
@@ -393,9 +382,7 @@ async function tierBlock(e, profile, goal, oppById, winsByCat, flagsByCat, flags
         row.appendChild(el('div', { style: { display: 'grid', gridTemplateColumns: '34px 1fr 52px 52px 52px 52px', gap: '8px', alignItems: 'baseline' } }, [
             el('span', { class: 'num', style: { color: INK_MUTE, fontSize: '12px' } }, [String(t.rank)]),
             el('div', {}, [
-                o.tracker_url
-                    ? el('a', { href: o.tracker_url, target: '_blank', rel: 'noopener', style: { color: INK, fontSize: '15px', fontWeight: '700', textDecoration: 'none' } }, [o.name || `#${t.tracker_id}`])
-                    : el('span', { style: { color: INK, fontSize: '15px', fontWeight: '700' } }, [o.name || `#${t.tracker_id}`]),
+                el('span', { style: { color: INK, fontSize: '15px', fontWeight: '700' } }, [o.name || `#${t.tracker_id}`]),
                 el('div', { class: 'label', style: { color: INK_MUTE, marginTop: '2px' } }, [
                     [o.club, o.rating, o.strength_de ? `DE ${o.strength_de}` : null, o.strength_pool ? `pool ${o.strength_pool}` : null].filter(Boolean).join(' \u00b7 ')
                 ]),
@@ -429,32 +416,28 @@ async function tierBlock(e, profile, goal, oppById, winsByCat, flagsByCat, flags
         wrap.appendChild(row);
     }
 
-    // Their records go stale the moment they fence again. One tap re-reads
-    // each fencer in this tier from FencingTracker (on demand, one fencer at
-    // a time, cached three days) and the windows and flags recompute.
+    // Their records go stale the moment they fence again. One tap refreshes
+    // this tier from our own copy of the results (profile facts and placings,
+    // regional and up) and the windows and flags recompute. Nothing is read
+    // from outside.
     {
         const ages = tier.map((t) => oppById.get(t.tracker_id)?.fetched_at).filter(Boolean).map((d) => Date.now() - new Date(d).getTime());
         const oldest = ages.length ? Math.round(Math.max(...ages) / 864e5) : null;
         const rb = el('button', { class: 'btn btn-ghost btn-mono-label', style: { marginTop: '10px', width: '100%' } }, [
-            oldest == null ? 'Read their records' : `Re-read their records · oldest copy ${oldest} day${oldest === 1 ? '' : 's'} old`
+            oldest == null ? 'Bring in their records' : `Refresh their records from our copy · oldest ${oldest} day${oldest === 1 ? '' : 's'} old`
         ]);
         rb.onclick = async () => {
-            rb.disabled = true;
+            rb.disabled = true; rb.textContent = 'Refreshing…';
             const ids = tier.map((t) => Number(t.tracker_id)).filter(Boolean);
-            let done = 0, failed = 0;
-            // Twelve per call; the function reads them one at a time.
-            for (let i = 0; i < ids.length; i += 12) {
-                const chunk = ids.slice(i, i + 12);
-                rb.textContent = `Reading ${Math.min(i + chunk.length, ids.length)} of ${ids.length}…`;
-                try {
-                    const { data, error } = await supa.functions.invoke('refresh-peer', { body: { tracker_ids: chunk, force: true } });
-                    if (error || data?.error) failed += chunk.length;
-                    else failed += Object.values(data?.results || {}).filter((s) => String(s).startsWith('failed')).length;
-                } catch (_) { failed += chunk.length; }
-                done += chunk.length;
+            try {
+                const { data, error } = await supa.rpc('refresh_opponents_from_copy', { p_ids: ids });
+                if (error) throw error;
+                toast(`${data ?? 0} placings on file for ${ids.length} fencers`);
+                location.reload();
+            } catch (err) {
+                rb.disabled = false; rb.textContent = 'Refresh their records from our copy';
+                toast('Could not refresh: ' + (err.message || err), 'error');
             }
-            if (failed) toast(`${failed} of ${ids.length} could not be read`, 'error');
-            location.reload();
         };
         wrap.appendChild(rb);
     }

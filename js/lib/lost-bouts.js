@@ -1,4 +1,4 @@
-// Lost bouts from the results. FencingTracker already knows every bout a boy
+// Lost bouts from the results. Our copy of the results already knows every bout a boy
 // fenced at a competition: the opponent, the score, the round, the day. The
 // journal should not make a twelve-year-old retype any of that. This module
 // finds the losses in the last four months that are not in the journal yet,
@@ -71,14 +71,14 @@ export async function snapshotsFor(tids) {
     return out;
 }
 
-// One fencer's profile read on demand (club, rating, strength), cached three
-// days server-side by refresh-peer. Used only when nothing we hold knows him.
+// One fencer's facts from our own copy of the results: name, club, rating.
+// Nothing is fetched from anywhere at runtime.
 async function fetchPeer(tid) {
     try {
-        const { data, error } = await supa.functions.invoke('refresh-peer', { body: { tracker_id: tid } });
-        if (error || !data || data.error) return null;
-        return { tracker_id: tid, name: data.name || null, club: data.club || null, rating: data.rating || null, strength_de: data.strength_de || null, strength_pool: data.strength_pool || null };
-    } catch (e) { console.warn('peer read failed', e); return null; }
+        const { data } = await supa.from('ft_fencers').select('tracker_id,name,club,rating,strength_de').eq('tracker_id', tid).maybeSingle();
+        if (!data) return null;
+        return { tracker_id: tid, name: data.name || null, club: data.club || null, rating: data.rating || null, strength_de: data.strength_de || null, strength_pool: null };
+    } catch (e) { console.warn('copy read failed', e); return null; }
 }
 export async function factsFor(tid) {
     if (!tid) return {};

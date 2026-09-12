@@ -1,7 +1,7 @@
 // Season model — the scoring that turns a field into a forecast, in the browser.
 //
 // Same maths as the season scripts: each registered opponent is taken at their
-// FencingTracker strength tilted by their own 90-day trend; the fencer is
+// official strength tilted by their own 90-day trend; the fencer is
 // seeded on form; a single-elimination bracket with standard seeding is played
 // out a couple of thousand times with a logistic win chance on a 400-point
 // scale; the finish distribution is priced with the 2026-27 points tables.

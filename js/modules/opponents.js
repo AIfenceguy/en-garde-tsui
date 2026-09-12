@@ -276,12 +276,6 @@ export async function mountOpponentDetail(root, params) {
                 } catch (e) { toast('Save failed: ' + e.message, 'error'); }
             }
         }, [isPri ? 'Priority target' : 'Mark as priority target']));
-        if (opp.tracker_url) {
-            priorityToggleRow.appendChild(el('a', {
-                href: opp.tracker_url, target: '_blank', rel: 'noopener',
-                class: 'btn btn-ghost btn-sm', style: { fontSize: '12px', padding: '4px 12px' }
-            }, ['↗ Tracker']));
-        }
     }
     renderPriorityToggle();
     root.appendChild(priorityToggleRow);

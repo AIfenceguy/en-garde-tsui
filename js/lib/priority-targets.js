@@ -1,5 +1,5 @@
 // Priority opponent intel for Summer Nationals 2026 prep.
-// Pulled from fencingtracker.com on 2026-05-10.
+// Compiled from the results on 2026-05-10.
 // Bundled as JS so the app reads it without an extra fetch.
 //
 // Principle: Repeat-loss against same fencer = personal-matchup gap.
@@ -7,9 +7,7 @@
 
 export const PRIORITY_META = {
     pulled_at: '2026-05-10',
-    source: 'fencingtracker.com',
-    raedyn_url: 'https://fencingtracker.com/p/100280844/Raedyn%20Ho%20Hin-Tsui',
-    kaylan_url: 'https://fencingtracker.com/p/100280845/Kaylan%20Ho%20Sen-Tsui',
+    source: 'results',
     raedyn_total_bouts: 866,
     kaylan_total_bouts: 705
 };
