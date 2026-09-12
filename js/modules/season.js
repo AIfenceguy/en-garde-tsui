@@ -1010,10 +1010,23 @@ async function applyLiveForecasts(events, _refreshed, profile, myForm) {
     if (!entrants?.length) return;
     const meta = new Map((evs || []).map((x) => [Number(x.ft_event_id), x]));
     const tids = [...new Set(entrants.map((x) => Number(x.tracker_id)))];
-    const snaps = new Map();
+    // Each entrant's form comes from our own rating: the listed strength is
+    // the base, and our 90-day change tilts it (the two scales move one for
+    // one, slope 1.00 in the private check). Activity from our event counts.
+    const own = new Map();
     for (let i = 0; i < tids.length; i += 250) {
-        const { data } = await supa.from('fencer_snapshot').select('tracker_id,strength_de,strength_pool,de_now,de_90d,de_180d,pool_now,pool_90d,pool_180d,events_90d,events_180d,results_90d,median_pct_90d,best_pct_90d,results_180d,median_pct_180d,last_event,fetched_at').in('tracker_id', tids.slice(i, i + 250));
-        for (const s of data || []) snaps.set(Number(s.tracker_id), s);
+        const { data } = await supa.from('own_ratings').select('tracker_id,rating,delta_90,events_90,events_180,last_bout').in('tracker_id', tids.slice(i, i + 250));
+        for (const o of data || []) own.set(Number(o.tracker_id), o);
+    }
+    const snaps = new Map();
+    for (const x of entrants) {
+        const o = own.get(Number(x.tracker_id));
+        if (!o || x.strength_de == null) continue;
+        snaps.set(Number(x.tracker_id), {
+            tracker_id: Number(x.tracker_id), strength_de: x.strength_de, de_now: x.strength_de, de_90d: x.strength_de - (o.delta_90 || 0),
+            events_90d: o.events_90 || 0, events_180d: o.events_180 || 0, results_90d: o.events_90 || 0, results_180d: o.events_180 || 0,
+            last_event: o.last_bout, history_json: []
+        });
     }
     const byEvent = new Map();
     for (const x of entrants) { const k = Number(x.ft_event_id); if (!byEvent.has(k)) byEvent.set(k, []); byEvent.get(k).push(x); }

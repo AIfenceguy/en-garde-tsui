@@ -16,7 +16,7 @@ function youthTable(cat) {
         Object.assign(t, { 1: 200, 2: 184, 3: 170, 4: 170, 5: 140, 6: 139, 7: 138, 8: 137 });
         for (let p = 9; p <= 16; p++) t[p] = 107 - (p - 9);
         for (let p = 17; p <= 32; p++) t[p] = 70 - (p - 17);
-        for (let p = 33; p <= 64; p++) t[p] = 25 - 0.25 * (p - 33);
+        for (let p = 33; p <= 64; p++) t[p] = 25 - 0.5 * (p - 33);   // half a point a place: 35th paid 19.2 and 36th 18.8 at the 2025 Nick Itkin SYC (0.8 x 24.0, 0.8 x 23.5)
     } else if (cat === 'y12') {
         Object.assign(t, { 1: 150, 2: 138, 3: 127.5, 4: 127.5, 5: 105, 6: 104.25, 7: 103.5, 8: 102.75 });
         for (let p = 9; p <= 16; p++) t[p] = 80.25 - 0.75 * (p - 9);
