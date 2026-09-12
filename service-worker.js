@@ -2,7 +2,7 @@
 // Caches the static shell so the app loads when wifi is bad at venues.
 // Mutations go through the in-app offline queue (lib/offline.js), not the SW.
 
-const SHELL_CACHE = 'en-garde-shell-v155';
+const SHELL_CACHE = 'en-garde-shell-v156';
 const SHELL_FILES = [
     './',
     './index.html',
@@ -77,7 +77,9 @@ self.addEventListener('install', (e) => {
     e.waitUntil(
         caches.open(SHELL_CACHE).then((c) =>
             // best-effort: missing files don't block install
-            Promise.all(SHELL_FILES.map((f) => c.add(f).catch(() => null)))
+            // cache: 'reload' skips the browser's HTTP cache, so a new version
+            // installs from the server, never from a ten-minute-old copy.
+            Promise.all(SHELL_FILES.map((f) => c.add(new Request(f, { cache: 'reload' })).catch(() => null)))
         )
     );
     self.skipWaiting();
@@ -110,8 +112,14 @@ self.addEventListener('fetch', (e) => {
     // appear to have done nothing, and a half-updated mix of old HTML with new
     // modules could be served. Offline still works: the cache is the fallback,
     // and it is refreshed on every successful fetch.
+    // The HTTP cache is bypassed on the way to the network (a cheap 304 when
+    // nothing changed), so a deploy shows on the very next load instead of
+    // ten minutes later with old modules under a new page.
+    const fresh = e.request.mode === 'navigate'
+        ? fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
+        : fetch(e.request, { cache: 'no-cache' });
     e.respondWith(
-        fetch(e.request)
+        fresh
             .then((res) => {
                 if (res.ok) {
                     const clone = res.clone();
