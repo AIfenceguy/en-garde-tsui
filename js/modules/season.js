@@ -781,7 +781,7 @@ async function localEventsCard(profile, home) {
     const rows = (data || []).map((t) => ({ ...t, mine: (t.events || []).filter(fits) })).filter((t) => t.mine.length);
     wrap.appendChild(serif(rows.length ? `${rows.length} within 60 miles` : 'Nothing listed within 60 miles yet', '22px'));
     wrap.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '12px', margin: '4px 0 8px', lineHeight: '1.5' } }, [
-        'Club and local tournaments from askFRED, read each morning. No national points; a Saturday of bouts close to home. Dates are the registration close, usually the event day.'
+        'Club and local tournaments from askFRED, read each morning. No national points; a Saturday of bouts close to home.'
     ]));
     const list = el('div', {});
     const render = (n) => {
