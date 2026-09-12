@@ -899,11 +899,70 @@ if (typeof MutationObserver !== 'undefined') {
 
 
 // =====================================================
+// The opponent's record from our own results copy, for a chosen window
+// (Ricky, 2026-09-12: last 3, 6, 12, 24 months, lifetime). Computed by the
+// fencer_record function over regional and national events only, the same
+// basis as the rating; the static intel file cannot answer per window.
+// =====================================================
+const RECORD_WINDOWS = [['3 mo', 90], ['6 mo', 180], ['12 mo', 365], ['24 mo', 730], ['Lifetime', null]];
+function liveRecordGrid(trackerId, initialDays = 365) {
+    const box = document.createElement('div');
+    const chips = document.createElement('div');
+    chips.className = 'chips';
+    chips.style.margin = '4px 0 10px';
+    const grid = document.createElement('div');
+    grid.className = 'ft-intel-grid';
+    const tiers = document.createElement('div');
+    const basis = document.createElement('div');
+    basis.className = 'ft-stat-sub';
+    basis.style.marginTop = '8px';
+    const pct = (w, l) => (w + l) ? Math.round(100 * w / (w + l)) : null;
+    const stat = (label, value, sub) => `<div class="ft-stat"><div class="ft-stat-label">${label}</div><div class="ft-stat-value">${value}</div><div class="ft-stat-sub">${sub}</div></div>`;
+    const windowLabel = (d) => d ? `the last ${d === 730 ? '24 months' : d === 365 ? '12 months' : d === 180 ? '6 months' : '3 months'}` : 'his whole record since July 2023';
+    async function load(days) {
+        for (const c of chips.children) c.classList.toggle('is-on', Number(c.dataset.days || 0) === Number(days || 0));
+        grid.innerHTML = '<div class="ft-stat"><div class="ft-stat-sub">reading…</div></div>';
+        tiers.innerHTML = ''; basis.textContent = '';
+        const { data: r, error } = await supa.rpc('fencer_record', { p_tracker_id: trackerId, p_days: days });
+        if (error || !r) { grid.innerHTML = `<div class="ft-stat"><div class="ft-stat-sub">could not read the record${error ? ': ' + error.message : ''}</div></div>`; return; }
+        if (!r.bouts) { grid.innerHTML = `<div class="ft-stat"><div class="ft-stat-sub">no regional or national bouts in ${windowLabel(days)}</div></div>`; return; }
+        const daysAgo = r.last_bout ? Math.round((Date.now() - new Date(r.last_bout + 'T00:00:00').getTime()) / 864e5) : null;
+        const p = r.pool || {}, d = r.de || {}, o = r.one_touch || {}, a = r.pool_avg || {};
+        grid.innerHTML = [
+            stat('Bouts', r.bouts, `${pct(r.wins, r.bouts - r.wins)}% won · ${r.events} event${r.events === 1 ? '' : 's'}`),
+            stat('Pools', pct(p.w || 0, p.l || 0) == null ? '—' : `${pct(p.w, p.l)}%`, `${p.w || 0}–${p.l || 0}`),
+            stat('DE', pct(d.w || 0, d.l || 0) == null ? '—' : `${pct(d.w, d.l)}%`, `${d.w || 0}–${d.l || 0}`),
+            stat('Decided by one touch', `${o.w || 0}–${o.l || 0}`, `${(o.w || 0) + (o.l || 0)} bouts`),
+            a.for != null ? stat('Pool average', `${Number(a.for).toFixed(2)}–${Number(a.against).toFixed(2)}`, 'for and against') : '',
+            daysAgo != null ? stat('Last bout', `${daysAgo}d`, 'ago') : ''
+        ].join('');
+        const vs = Object.entries(r.vs_rating || {}).filter(([t, v]) => (v.w + v.l) > 0 && t !== 'U').sort();
+        if (vs.length) {
+            tiers.innerHTML = `<details class="ft-tier-block" open><summary>Against each rating · ${windowLabel(days)}</summary><div class="ft-tier-list">${vs.map(([t, v]) =>
+                `<div class="ft-tier-row"><span class="ft-tier-badge ft-tier-${t}">${t}</span><span class="ft-tier-record">${v.w}–${v.l}</span><span class="ft-tier-pct">${pct(v.w, v.l)}%</span></div>`).join('')}</div></details>`;
+        }
+        basis.textContent = `${windowLabel(days).replace(/^the /, 'The ').replace(/^his /, 'His ')}, ${r.first_bout} to ${r.last_bout}, regional and national events only, from the results copy.`;
+    }
+    for (const [label, days] of RECORD_WINDOWS) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'chip'; b.dataset.days = days || 0; b.textContent = label;
+        b.onclick = () => load(days);
+        chips.appendChild(b);
+    }
+    box.append(chips, grid, tiers, basis);
+    load(initialDays);
+    return box;
+}
+
+// =====================================================
 // Phase: FT Intel — show tactical insights for this opponent (if matched)
 // =====================================================
 async function buildFtIntelPanel(opp) {
-    const intel = await getIntel(opp?.name);
-    if (!intel) return null;
+    const found = await getIntel(opp?.name);
+    if (!found && !opp?.tracker_id) return null;
+    // Without an intel entry the static parts render empty and the live
+    // record below replaces the grid; with one, the plays and cues stay.
+    const intel = found || { ranks: {}, plays: [], recent_record: { pool: {}, de: {} }, vs_tier: {}, recent_5: [], career_bouts: '', career_win_rate: 0 };
     const wrap = document.createElement('section');
     wrap.className = 'ft-intel-panel';
     const ranks = ['y14','cadet','junior']
@@ -948,7 +1007,6 @@ async function buildFtIntelPanel(opp) {
         <div class="ft-intel-head">
             <span class="ft-intel-label">Scout intel · from his results</span>
             <div class="ft-intel-ranks">${ranks}</div>
-            <a class="ft-intel-link" href="${intel.ft_url}" target="_blank" rel="noopener">Profile ↗</a>
         </div>
         ${headline ? `<div class="ft-intel-headline">${headline}</div>` : (intel.tagline ? `<div class="ft-intel-tagline">${noEmoji(intel.tagline)}</div>` : '')}
         ${headlinePlan}
@@ -988,6 +1046,15 @@ async function buildFtIntelPanel(opp) {
         ${vsTier ? `<details class="ft-tier-block"><summary>Against each rating · lifetime</summary><div class="ft-tier-list">${vsTier}</div></details>` : ''}
         ${last5 ? `<details class="ft-last5-block"><summary>Last five ranked bouts</summary><ul class="ft-last5">${last5}</ul></details>` : ''}
     `;
+    // The live record, by window, replaces the fixed grid and the lifetime
+    // tier block whenever the opponent is keyed by member number.
+    if (opp?.tracker_id) {
+        const live = liveRecordGrid(Number(opp.tracker_id));
+        const grid = wrap.querySelector('.ft-intel-grid');
+        if (grid) grid.replaceWith(live); else wrap.appendChild(live);
+        const tb = wrap.querySelector('.ft-tier-block');
+        if (tb) tb.remove();
+    }
     return wrap;
 }
 
