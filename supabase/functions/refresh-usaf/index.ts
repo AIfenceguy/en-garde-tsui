@@ -16,16 +16,22 @@
 //                                          id, dates, venue; the plan's rows get
 //                                          their tournament id by name + weekend.
 //   tournament_id (or tournament_ids[])    GET /details/tournaments/{id}: the
-//                                          events with ids, entrants, official
-//                                          competitors, open spots, cap, close.
+//   or upcoming: true                      events with ids, entrants, official
+//                                          competitors, open spots, cap, close;
+//                                          then, for the foil Y10 to Junior
+//                                          events, GET .../entrants?event_id=N,
+//                                          the official entry list keyed by
+//                                          member number (usaf_entrants), read
+//                                          only when the count changed or ours
+//                                          is three days old.
 //   event_id (or event_ids[])              GET /rankings/events/{id}/results,
 //                                          the official final placings of one
 //                                          event with each entrant's rating.
 //
-// The portal's robots.txt disallows crawlers, so nothing here is scheduled. It
-// runs when a signed-in parent asks, or with the cron secret if the household
-// later schedules it with USA Fencing's blessing. Identified user agent, a
-// pause between requests, a handful of requests per call at most.
+// Every page here is public; no account is used. Runs when a signed-in parent
+// asks, or on the household's own schedule with the cron secret (a planned
+// handful of reads a day, see usaf_read_plan). Identified user agent, a pause
+// between requests, a bounded number of requests per call.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -38,6 +44,11 @@ const DELAY_MS = 500;
 const MAX_PAGES = 4;
 const MAX_EVENTS = 6;
 const MAX_TOURNAMENTS = 12;
+// Entrant lists: the foil youth events, at most this many list reads per call,
+// and a list is re-read only when the page's count changed or ours is old.
+const LIST_CODE = /^(Y10|Y12|Y14|CDT|JNR)[MW]F$/i;
+const MAX_LISTS = 30;
+const LIST_MAX_AGE_MS = 3 * 86400000;
 const UPCOMING_DAYS = 120;
 const CATS: Record<string, string> = { CADET: "cadet", JUNIOR: "junior", SENIOR: "senior", DIV1: "div1", VETERAN: "vet", Y14: "y14", Y12: "y12", Y10: "y10" };
 const YOUTH = new Set(["Y10", "Y12", "Y14"]);
@@ -236,6 +247,37 @@ function parseTournamentPage(html: string): TournamentPage {
   return { name, start: when.start, end: when.end, venue, city, events };
 }
 const codeCategory = (code: string | null) => CODE_CATEGORY[String(code || "").slice(0, 3).toUpperCase()] || null;
+
+// ---- an event's entrant list ----------------------------------------------
+// GET /details/tournaments/{tid}/entrants?event_id={eid} answers JSON with
+// entrants_table: one <tr data-club data-division> per entrant carrying the
+// name in an <h4>, the rating in <strong>, a flag, and "#member<br/>status";
+// the header says "Total Entrants N". Nothing is written unless the rows
+// parsed equal N.
+type Entrant = { member_id: string; name: string; rating: string | null; country: string | null; club: string | null; division: string | null; status: string | null };
+const flagCountry = (s: string): string | null => {
+  const cps = [...s].map((c) => c.codePointAt(0) || 0).filter((cp) => cp >= 0x1F1E6 && cp <= 0x1F1FF);
+  return cps.length === 2 ? String.fromCharCode(...cps.map((cp) => cp - 0x1F1E6 + 65)) : null;
+};
+function parseEntrantsTable(html: string): { total: number | null; rows: Entrant[] } {
+  const tm = /Total Entrants(?:\s|&nbsp;)*(\d+)/i.exec(html);
+  const total = tm ? Number(tm[1]) : null;
+  const rows: Entrant[] = [];
+  for (const m of html.matchAll(/<tr\s+data-club="([^"]*)"\s+data-division="([^"]*)"[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const body = m[3];
+    const nm = /<h4[^>]*>([\s\S]*?)<\/h4>/i.exec(body);
+    const id = /#(\d{6,})/.exec(body);
+    if (!nm || !id) continue;
+    const rt = /<strong>([^<]*)<\/strong>/i.exec(body);
+    const st = new RegExp(`#${id[1]}\\s*<br\\s*/?>\\s*([^<]*)`, "i").exec(body);
+    const flag = /<small>([^<]*)<\/small>/i.exec(body);
+    rows.push({
+      member_id: id[1], name: strip(nm[1]), rating: rt ? (strip(rt[1]) || null) : null, country: flag ? flagCountry(flag[1]) : null,
+      club: decode(m[1]).trim() || null, division: decode(m[2]).trim() || null, status: st ? (strip(st[1]) || null) : null,
+    });
+  }
+  return { total, rows };
+}
 // A snapshot is keyed by name; two athletes with the same name on one list
 // (the Y14 women's list had one, 2026-09-11) keep both rows, the second
 // marked by its member number, rather than failing the whole list.
@@ -406,6 +448,46 @@ Deno.serve(async (req) => {
         }));
         const { error } = await db.from("usaf_events").upsert(evRows, { onConflict: "event_id" });
         if (error) { done.push({ tournament_id: id, error: error.message }); continue; }
+        // The official entry lists of the foil youth events, keyed by member
+        // number. Read when the page's count differs from what we hold or our
+        // copy is three days old; written only when the rows match the total.
+        const lists: Record<string, unknown>[] = [];
+        if (body.lists !== false) {
+          const wanted = page.events.filter((e) => LIST_CODE.test(String(e.code || "")));
+          const { data: held } = await db.from("usaf_events").select("event_id,entrants_listed,entrants_read_at").in("event_id", wanted.length ? wanted.map((e) => e.event_id) : [-1]);
+          const heldBy = new Map((held || []).map((h) => [Number(h.event_id), h]));
+          let reads = 0;
+          for (const e of wanted) {
+            const h = heldBy.get(e.event_id);
+            const count = e.official ?? e.entrants;
+            const stale = !h?.entrants_read_at || (Date.now() - Date.parse(h.entrants_read_at)) > LIST_MAX_AGE_MS;
+            const changed = h?.entrants_listed == null || count == null || Number(count) !== Number(h.entrants_listed);
+            if (!stale && !changed) { lists.push({ code: e.code, event_id: e.event_id, held: h?.entrants_listed, skipped: "unchanged" }); continue; }
+            if (reads >= MAX_LISTS) { lists.push({ code: e.code, event_id: e.event_id, skipped: "call budget" }); continue; }
+            await sleep(DELAY_MS); reads += 1;
+            try {
+              const lr = await fetch(`${HOST}/details/tournaments/${id}/entrants?event_id=${e.event_id}`, { headers: { "User-Agent": UA, "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" } });
+              if (!lr.ok) { lists.push({ code: e.code, event_id: e.event_id, error: `USA Fencing answered ${lr.status}` }); continue; }
+              const payload = await lr.json();
+              const parsed = parseEntrantsTable(String(payload?.entrants_table || ""));
+              if (parsed.total == null || parsed.rows.length !== parsed.total) {
+                lists.push({ code: e.code, event_id: e.event_id, total: parsed.total, parsed: parsed.rows.length, error: "rows parsed do not match the page's total; nothing written" });
+                continue;
+              }
+              const now = new Date().toISOString();
+              await db.from("usaf_entrants").delete().eq("event_id", e.event_id);
+              const rows = parsed.rows.map((x) => ({ event_id: e.event_id, ...x, read_at: now }));
+              let failed: string | null = null;
+              for (let k = 0; k < rows.length; k += 200) {
+                const { error: le } = await db.from("usaf_entrants").upsert(rows.slice(k, k + 200), { onConflict: "event_id,member_id" });
+                if (le) { failed = le.message; break; }
+              }
+              if (failed) { lists.push({ code: e.code, event_id: e.event_id, error: failed }); continue; }
+              await db.from("usaf_events").update({ entrants_listed: parsed.total, entrants_read_at: now, entrants: parsed.total }).eq("event_id", e.event_id);
+              lists.push({ code: e.code, event_id: e.event_id, total: parsed.total, written: rows.length });
+            } catch (err) { lists.push({ code: e.code, event_id: e.event_id, error: String((err as Error).message || err) }); }
+          }
+        }
         // The plan's rows for this tournament, by event code.
         const { data: planned } = await db.from("season_events").select("id,event_code,tournament,entrants").eq("usaf_id", id);
         const touched: string[] = [];
@@ -417,7 +499,7 @@ Deno.serve(async (req) => {
           await db.from("season_events").update({ usaf_event_id: e.event_id, entrants: e.official ?? e.entrants ?? p.entrants, official: e.official, open_spots: e.open, cap: e.cap, reg_close: e.reg_close, usaf_read_at: new Date().toISOString() }).eq("id", p.id);
           touched.push(`${p.event_code}: ${e.official ?? e.entrants} entered${e.open != null ? `, ${e.open} open` : ""}`);
         }
-        done.push({ tournament_id: id, name: page.name, dates: [page.start, page.end], city: page.city, events: page.events.length, planned: touched, mismatch });
+        done.push({ tournament_id: id, name: page.name, dates: [page.start, page.end], city: page.city, events: page.events.length, planned: touched, mismatch, lists });
       } catch (err) { done.push({ tournament_id: id, error: String((err as Error).message || err) }); }
       if (i < tournamentIds.length - 1) await sleep(DELAY_MS);
     }
