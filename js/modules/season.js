@@ -1550,6 +1550,11 @@ function recentBouts(bouts, profile) {
     const wrap = el('section', { class: 'card', style: { margin: '0 var(--gut) 18px' } });
     wrap.appendChild(label('Recent bouts · from the results'));
     if (!bouts.length) { wrap.appendChild(el('p', { style: { color: INK_MUTE, fontSize: '13px', margin: '6px 0 0' } }, ['No bouts loaded yet.'])); return wrap; }
+    // A bout that says something is tagged in words, not in bold (Ricky,
+    // 2026-09-12: bold names read as an inconsistency, not a signal).
+    wrap.appendChild(el('p', { class: 'label', style: { color: INK_MUTE, margin: '2px 0 6px', textTransform: 'none', letterSpacing: 'normal' } }, [
+        'Opponent, his listed strength, the event. Upset: a win over a fencer listed 40 or more above him. Gave one away: a loss to one listed 100 or more below.'
+    ]));
     const off = profile.strength_de ?? 0;
     bouts.forEach((b, i) => {
         const win = b.result === 'V';
@@ -1557,8 +1562,10 @@ function recentBouts(bouts, profile) {
         const bad = !win && b.opponent_strength < off - 100;
         wrap.appendChild(el('div', { style: { display: 'grid', gridTemplateColumns: '62px 1fr auto', gap: '8px', padding: '7px 0', borderTop: i ? '1px solid var(--rule)' : 'none', alignItems: 'baseline' } }, [
             el('span', { class: 'label', style: { color: INK_MUTE } }, [String(b.bout_date).slice(5)]),
-            el('span', { style: { color: INK, fontSize: '14px', fontWeight: upset || bad ? '700' : '500' } }, [
-                `${b.opponent} `, el('span', { class: 'label', style: { color: INK_MUTE } }, [`${b.opponent_strength ?? '—'} · ${catLabel(b.category)}`])
+            el('span', { style: { color: INK, fontSize: '14px', fontWeight: '500' } }, [
+                `${b.opponent} `, el('span', { class: 'label', style: { color: INK_MUTE } }, [`${b.opponent_strength ?? '—'} · ${catLabel(b.category)}`]),
+                upset ? el('span', { class: 'label', style: { color: GOOD, marginLeft: '8px' } }, ['upset']) : null,
+                bad ? el('span', { class: 'label', style: { color: WARN, marginLeft: '8px' } }, ['gave one away']) : null
             ]),
             el('span', { class: 'num', style: { color: win ? GOOD : BAD, fontWeight: '700' } }, [`${win ? 'V' : 'D'} ${b.score_for}–${b.score_against}`])
         ]));
