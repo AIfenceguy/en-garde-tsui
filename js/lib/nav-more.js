@@ -1,7 +1,8 @@
 // The More tab: opens the bottom nav to two rows, closes it on any navigation.
 export function mountNavMore() {
     const nav = document.getElementById('bottom-nav');
-    if (!nav || nav.querySelector('.nav-more')) return;
+    // The top nav shows every screen at once; nothing to fold, no More.
+    if (!nav || nav.classList.contains('top-nav') || nav.querySelector('.nav-more')) return;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'nav-more';

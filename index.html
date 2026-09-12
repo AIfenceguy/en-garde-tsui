@@ -36,19 +36,8 @@
         </div>
     </header>
 
-    <!-- profile menu (hidden by default) -->
-    <div id="profile-menu" class="profile-menu" hidden></div>
-
-    <!-- offline indicator -->
-    <div id="offline-banner" class="offline-banner" hidden>
-        Offline · changes will sync when you reconnect
-    </div>
-
-    <!-- main mount point -->
-    <main id="app" class="app"></main>
-
-    <!-- bottom nav (mobile) — SF-Symbols-style SVG icons -->
-    <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
+    <!-- main nav: every screen in one row under the header, sticky (Ricky, 2026-09-11) -->
+    <nav class="bottom-nav top-nav is-expanded" id="bottom-nav" aria-label="Primary">
         <a href="#dashboard" data-route="dashboard">
             <span class="nav-icon">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -175,6 +164,18 @@
             <span class="nav-label">Settings</span>
         </a>
     </nav>
+
+    <!-- profile menu (hidden by default) -->
+    <div id="profile-menu" class="profile-menu" hidden></div>
+
+    <!-- offline indicator -->
+    <div id="offline-banner" class="offline-banner" hidden>
+        Offline · changes will sync when you reconnect
+    </div>
+
+    <!-- main mount point -->
+    <main id="app" class="app"></main>
+
 
     <!-- toast region -->
     <div id="toast-region" class="toast-region" aria-live="polite"></div>

@@ -50,3 +50,25 @@ body[data-parent='0'] .bottom-nav:not(.is-expanded) a[data-route='travel'] { dis
     font-size: 8.5px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700;
 }
 .bottom-nav.is-expanded .nav-more { color: var(--ink, #1A1D24); }
+
+/* Top nav (Ricky, 2026-09-11): every screen visible at once, nothing folded
+   behind More, no scrolling to navigate. It sits under the header and sticks
+   to the top edge while the page scrolls; on a phone it wraps to a second
+   row. The element keeps is-expanded permanently so the folding rules above
+   never match; the per-login visibility rules still apply. */
+.top-nav {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch;
+    gap: 0 2px; padding: 2px 6px 0;
+    overflow: visible;
+    border-top: none; border-bottom: 1px solid var(--rule);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+    background: rgba(255, 255, 255, 0.92);
+}
+.top-nav a[data-route] { flex: 0 1 84px; min-width: 64px; padding: 8px 4px 10px; }
+.top-nav .nav-more { display: none; }
+@media (max-width: 520px) {
+    .top-nav a[data-route] { flex: 1 1 56px; min-width: 52px; padding: 6px 2px 8px; }
+    .top-nav .nav-icon, .top-nav .nav-icon svg { width: 20px; height: 20px; }
+    .top-nav .nav-label { font-size: 9px; }
+}
