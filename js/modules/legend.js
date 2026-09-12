@@ -15,25 +15,25 @@ const SECTIONS = [
         intro: 'Three sources, all public facts, gathered slowly and kept in our own copy. Nothing on any screen is read from an outside site while you look at it.',
         items: [
             ['Our copy of the results', 'Every regional, national and international foil event since July 2023: placings, entry lists and each bout with its score. Brought up to date each morning; results usually land the day after an event.'],
-            ['USA Fencing', 'The national standings, the tournament calendar and the official entry lists, read a few pages a night at random moments.'],
-            ['askFRED', 'Club and local tournaments within 60 miles of home, through their API under our account, once a morning.'],
+            ['USA Fencing', 'The national standings, the tournament calendar and the official entry lists, kept up to date daily.'],
+            ['askFRED', 'Club and local tournaments within 60 miles of home, through their API, kept up to date daily.'],
             ['What you type', 'Lessons, drills, bout reflections, plans and check-ins. Facts the results already know are filled in for you; you type only what happened and what you learned.']
         ]
     },
     {
         title: 'Strength',
         items: [
-            ['Own strength', 'Our rating, from every regional-and-up bout he has fenced since July 2023, the win and the score both counting. 400 points apart is ten to one in a 15-touch bout. Shown with a ± range, the bouts and events behind it, and how many events he fenced in the last 3, 6, 9 and 12 months. Needs 12 bouts before it is shown. Wins over fencers far below cannot raise it; losses to fencers far above cannot lower it. Club events do not count. Recomputed each morning.'],
+            ['Own strength', 'Our rating, from every regional-and-up bout he has fenced since July 2023, the result and the score both counting. Shown with a ± range, the bouts and events behind it, and how many events he fenced in the last 3, 6, 9 and 12 months. Needs 12 bouts before it is shown. An easy win does not inflate it and a loss to a much stronger fencer does not dent it. Club events do not count. Recomputed each morning.'],
             ['Change over the last year', 'The rating a year ago against today. A later bout can revise an earlier day, so this is a hindsight figure; today\'s number is the stable one.'],
-            ['Official DE strength', 'The outside strength number printed on the entry lists we copy, updated every other day in the weeks before an event. A different scale from ours: it runs to about 5000 and starts new fencers at 2500.'],
-            ['Form strength', 'His placings in the last three and six months, mapped onto that same outside scale by where he finished in each field, recent events weighing more. "Fencing 285 above his seed" means he has been finishing like a fencer listed 285 higher.'],
+            ['Official DE strength', 'The outside strength number printed on the entry lists we copy. A different scale from ours; the two are never compared as numbers.'],
+            ['Form strength', 'His placings in the last three and six months, translated onto that same outside scale. "Fencing 285 above his seed" means he has been finishing like a fencer listed 285 higher.'],
             ['Thin', 'A rating from fewer than twelve bouts. Treat it as a guess.']
         ]
     },
     {
         title: 'Season',
         items: [
-            ['Field', 'Who is registered, from our copy of the entry list, refreshed every other day in the three weeks before an event. A list we could not read in full is never scored short; it is left out.'],
+            ['Field', 'Who is registered, from our copy of the entry list, kept current in the weeks before an event. A list we could not read in full is never scored short; it is left out.'],
             ['He\'d start', 'His seed in that field on form strength, with the official seed in brackets. "By pools" is where his pool strength would draw him.'],
             ['Top 8 and expected finish', 'A bracket simulated many times from the seeds, each bout decided on the strength gap. Expected is the median finish.'],
             ['Points', 'National points for that finish under the 2026-27 tables, weighted by how likely each finish is. Youth events pay from the handbook table; an SYC pays 80% of it to the top 40% of the field, at most 64 places. Cadet, Junior and Division I pay from the trial tables; at a NAC the Elite figure is in brackets.'],
@@ -42,7 +42,7 @@ const SECTIONS = [
             ['Elite line', 'At a NAC with 169 or more entries the field splits two weeks out; the Elite bracket takes the ranked entrants. The line is drawn from the official entry list and the current ranking.'],
             ['Per person and points per $100', 'A return fare, half a hotel room per night, the entry and half the driving from home. Multiply by who is going. A live fare from Travel replaces the estimate.'],
             ['Fencers to watch', 'The fencers a few places above him on the standings: where they are entered and their recent placings, from our copy.'],
-            ['Recent bouts', 'From the results, with our rating for each opponent. Upset: a win over a fencer 120 or more above him. Gave one away: a loss to one 200 or more below.'],
+            ['Recent bouts', 'From the results, with our rating for each opponent. Upset: a win over a clearly stronger fencer. Gave one away: a loss to a clearly weaker one.'],
             ['Local club events', 'Within 60 miles of home, from askFRED. No national points; a Saturday of bouts.']
         ]
     },
@@ -50,7 +50,7 @@ const SECTIONS = [
         title: 'Insight',
         items: [
             ['Windows', 'For each fencer around his seed: events, median finish as a percentage of the field, best and worst, over 90, 180, 270 and 365 days, in the event\'s own category only.'],
-            ['Flags', 'Rusty: 60 days since his last event anywhere. Not here lately: 120 days since this category. Fades in deep fields: median 15 points worse in fields of 100 or more. Form rising or dropping: median moved 12 points over six months, four events or more. Erratic: finishes span 60 points in a year. Heavy schedule: four events here in 90 days. Thin record: one or two events here in a year.'],
+            ['Flags', 'Rusty: a long gap since his last event anywhere. Not here lately: a long gap in this category. Fades in deep fields: finishes clearly worse in large fields than small ones. Form rising or dropping: the median finish moved over the half year. Erratic: finishes spread wide over the year. Heavy schedule: many events here in a quarter. Thin record: one or two events here in a year.'],
             ['Refresh their records', 'Rebuilds the tier from our copy: profile facts and placings, regional and up. Nothing is read from outside.'],
             ['Coach brief', 'One AI reading of the whole tier, kept per event until you refresh it.']
         ]
