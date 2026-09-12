@@ -35,7 +35,12 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const UA = "FencingFamilyPlanner/1.0 (+mailto:rtsui.jlconcepts@gmail.com; on request, cached)";
+// Reads look like a person on a laptop (Ricky, 2026-09-11): a browser identity,
+// a pause of two to six seconds between requests with no fixed beat, lists
+// opened in no particular order, and the page as referer, the way a click is.
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+const LANG = "en-US,en;q=0.9";
+const HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 const HOST = "https://member.usafencing.org";
 const DATA_URL = `${HOST}/rankings/data`;
 const POINTS_URL = `${HOST}/points/national`;
@@ -60,6 +65,7 @@ const YOUTH = new Set(["Y10", "Y12", "Y14"]);
 const CODE_CATEGORY: Record<string, string> = { Y10: "y10", Y12: "y12", Y14: "y14", CDT: "cadet", JNR: "junior", DV1: "div1", SNR: "senior", VET: "vet" };
 const MARK_RANKS = [1, 8, 16, 20, 24, 32, 40, 50, 64, 100, 150, 200, 300];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const pause = () => sleep(2000 + Math.random() * 4000);
 
 // ---- small text helpers -------------------------------------------------
 const decode = (t: string) => t.replace(/&amp;/g, "&").replace(/&#0*39;|&apos;|&rsquo;|&#8217;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
@@ -328,7 +334,7 @@ Deno.serve(async (req) => {
   const weapon = String(body.weapon || "FOIL").toUpperCase();
   const weaponCode = (gender === "MENS" ? "M" : "W") + weapon[0];
   const today = new Date().toISOString().slice(0, 10);
-  const headers = { "User-Agent": UA, "Accept": "application/json, text/html" };
+  const headers = { "User-Agent": UA, "Accept": "application/json, text/plain, */*", "Accept-Language": LANG, "X-Requested-With": "XMLHttpRequest" };
 
   // ---- one event's official results -------------------------------------
   const eventIds: number[] = [...new Set([body.event_id, ...(Array.isArray(body.event_ids) ? body.event_ids : [])].map(Number).filter((n) => n > 0))].slice(0, MAX_EVENTS);
@@ -368,7 +374,7 @@ Deno.serve(async (req) => {
         const mine = out.filter((x: any) => listed.has(`${x.last_name}, ${x.first_name}`.toLowerCase())).map((x: any) => `${listed.get(`${x.last_name}, ${x.first_name}`.toLowerCase())}: ${x.placement} of ${out.length}`);
         done.push({ event_id: id, event: ev.event_code, tournament: ev.tournament_name, entrants: out.length, mine });
       } catch (err) { done.push({ event_id: id, error: String((err as Error).message || err) }); }
-      if (i < eventIds.length - 1) await sleep(DELAY_MS);
+      if (i < eventIds.length - 1) await pause();
     }
     return json({ events: done });
   }
@@ -380,13 +386,13 @@ Deno.serve(async (req) => {
     const scopeOf = new Map<number, string>();
     try {
       for (let i = 0; i < urls.length; i++) {
-        const r = await fetch(urls[i], { headers: { "User-Agent": UA, "Accept": "text/html" } });
+        const r = await fetch(urls[i], { headers: { "User-Agent": UA, "Accept": HTML_ACCEPT, "Accept-Language": LANG } });
         if (!r.ok) { if (i >= 2) break; return json({ error: `USA Fencing answered ${r.status} on ${urls[i]}` }, 502); }
         const page = parseListPage(await r.text());
         let fresh = 0;
         for (const row of page) { if (!rows.some((x) => x.tournament_id === row.tournament_id)) { rows.push(row); scopeOf.set(row.tournament_id, i === 0 ? "national" : "regional"); fresh += 1; } }
         if (i >= 2 && !fresh) break;
-        if (i < urls.length - 1) await sleep(DELAY_MS);
+        if (i < urls.length - 1) await pause();
       }
     } catch (err) { return json({ error: String((err as Error).message || err) }, 502); }
     if (!rows.length) return json({ error: "no tournaments found on the lists" }, 502);
@@ -443,7 +449,7 @@ Deno.serve(async (req) => {
       const id = tournamentIds[i];
       if (overBudget()) { done.push({ tournament_id: id, skipped: "time budget; next planned read" }); continue; }
       try {
-        const r = await fetch(`${HOST}/details/tournaments/${id}`, { headers: { "User-Agent": UA, "Accept": "text/html" } });
+        const r = await fetch(`${HOST}/details/tournaments/${id}`, { headers: { "User-Agent": UA, "Accept": HTML_ACCEPT, "Accept-Language": LANG } });
         if (!r.ok) { done.push({ tournament_id: id, error: `USA Fencing answered ${r.status}` }); continue; }
         const page = parseTournamentPage(await r.text());
         if (!page.events.length) {
@@ -463,7 +469,7 @@ Deno.serve(async (req) => {
         // copy is three days old; written only when the rows match the total.
         const lists: Record<string, unknown>[] = [];
         if (body.lists !== false) {
-          const wanted = page.events.filter((e) => LIST_CODE.test(String(e.code || "")));
+          const wanted = page.events.filter((e) => LIST_CODE.test(String(e.code || ""))).sort(() => Math.random() - 0.5);
           const { data: held } = await db.from("usaf_events").select("event_id,entrants_listed,entrants_read_at").in("event_id", wanted.length ? wanted.map((e) => e.event_id) : [-1]);
           const heldBy = new Map((held || []).map((h) => [Number(h.event_id), h]));
           let reads = 0;
@@ -474,9 +480,9 @@ Deno.serve(async (req) => {
             const changed = h?.entrants_listed == null || count == null || Number(count) !== Number(h.entrants_listed);
             if (!stale && !changed) { lists.push({ code: e.code, event_id: e.event_id, held: h?.entrants_listed, skipped: "unchanged" }); continue; }
             if (reads >= MAX_LISTS || overBudget()) { lists.push({ code: e.code, event_id: e.event_id, skipped: "call budget; next planned read" }); continue; }
-            await sleep(DELAY_MS); reads += 1;
+            await pause(); reads += 1;
             try {
-              const lr = await fetch(`${HOST}/details/tournaments/${id}/entrants?event_id=${e.event_id}`, { headers: { "User-Agent": UA, "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" } });
+              const lr = await fetch(`${HOST}/details/tournaments/${id}/entrants?event_id=${e.event_id}`, { headers: { "User-Agent": UA, "Accept": "application/json, text/javascript, */*; q=0.01", "Accept-Language": LANG, "X-Requested-With": "XMLHttpRequest", "Referer": `${HOST}/details/tournaments/${id}` } });
               if (!lr.ok) { lists.push({ code: e.code, event_id: e.event_id, error: `USA Fencing answered ${lr.status}` }); continue; }
               const payload = await lr.json();
               const parsed = parseEntrantsTable(String(payload?.entrants_table || ""));
@@ -511,7 +517,7 @@ Deno.serve(async (req) => {
         }
         done.push({ tournament_id: id, name: page.name, dates: [page.start, page.end], city: page.city, events: page.events.length, planned: touched, mismatch, lists });
       } catch (err) { done.push({ tournament_id: id, error: String((err as Error).message || err) }); }
-      if (i < tournamentIds.length - 1) await sleep(DELAY_MS);
+      if (i < tournamentIds.length - 1) await pause();
     }
     return json({ tournaments: done });
   }
@@ -524,7 +530,7 @@ Deno.serve(async (req) => {
   if (YOUTH.has(ageKey)) {
     let parsed: ReturnType<typeof parseYouthPage>;
     try {
-      const r = await fetch(`${POINTS_URL}/${weaponCode}/${ageKey}`, { headers: { "User-Agent": UA, "Accept": "text/html" } });
+      const r = await fetch(`${POINTS_URL}/${weaponCode}/${ageKey}`, { headers: { "User-Agent": UA, "Accept": HTML_ACCEPT, "Accept-Language": LANG } });
       if (!r.ok) return json({ error: `USA Fencing answered ${r.status}` }, 502);
       parsed = parseYouthPage(await r.text());
     } catch (err) { return json({ error: String((err as Error).message || err) }, 502); }
@@ -590,12 +596,12 @@ Deno.serve(async (req) => {
     for (let page = 1; page <= pages && page <= lastPage; page++) {
       const q = new URLSearchParams({ gender, weapon, age_category: ageKey });
       if (page > 1) q.set("page", String(page));
-      const r = await fetch(`${DATA_URL}?${q}`, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+      const r = await fetch(`${DATA_URL}?${q}`, { headers: { "User-Agent": UA, "Accept": "application/json, text/plain, */*", "Accept-Language": LANG, "X-Requested-With": "XMLHttpRequest", "Referer": `${HOST}/rankings` } });
       if (!r.ok) return json({ error: `USA Fencing answered ${r.status} on page ${page}` }, 502);
       const payload = await r.json();
       total = Number(payload.total || 0); lastPage = Number(payload.last_page || 1); fetched += 1;
       for (const row of payload.data || []) rows.push(row);
-      if (page < pages && page < lastPage) await sleep(DELAY_MS);
+      if (page < pages && page < lastPage) await pause();
     }
   } catch (err) {
     return json({ error: String((err as Error).message || err) }, 502);
